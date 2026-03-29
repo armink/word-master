@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getWordbooks, createWordbook } from '@/api'
 import type { Wordbook } from '@/types'
+import { useWordbook } from '@/hooks/useWordbook'
 
 export default function WordbooksPage() {
   const navigate = useNavigate()
+  const { wordbook: currentWb, setWordbook } = useWordbook()
   const [wordbooks, setWordbooks] = useState<Wordbook[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -58,23 +60,38 @@ export default function WordbooksPage() {
       ) : (
         <div className="space-y-3">
           {wordbooks.map(wb => (
-            <button
+            <div
               key={wb.id}
-              onClick={() => navigate(`/wordbooks/${wb.id}`)}
-              className="w-full bg-white border border-gray-100 rounded-2xl p-4 text-left shadow-sm active:scale-95 transition-transform"
+              className={`w-full bg-white rounded-2xl p-4 shadow-sm border-2 transition-colors ${
+                currentWb?.id === wb.id ? 'border-primary-400 bg-primary-50' : 'border-gray-100'
+              }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 truncate">{wb.name}</p>
+              <div className="flex items-center justify-between">
+                <button
+                  className="flex-1 min-w-0 text-left"
+                  onClick={() => navigate(`/wordbooks/${wb.id}`)}
+                >
+                  <p className="font-semibold text-gray-800 truncate">
+                    {currentWb?.id === wb.id && <span className="text-primary-500 mr-1">▶</span>}
+                    {wb.name}
+                  </p>
                   {wb.description && (
                     <p className="text-xs text-gray-400 mt-0.5 truncate">{wb.description}</p>
                   )}
-                </div>
-                <span className="ml-3 text-xs text-gray-400 shrink-0">
-                  {wb.item_count} 个词条
-                </span>
+                  <p className="text-xs text-gray-400 mt-0.5">{wb.item_count} 个词条</p>
+                </button>
+                <button
+                  onClick={() => setWordbook(currentWb?.id === wb.id ? null : wb)}
+                  className={`ml-3 shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                    currentWb?.id === wb.id
+                      ? 'bg-primary-500 text-white border-primary-500'
+                      : 'text-primary-600 border-primary-300'
+                  }`}
+                >
+                  {currentWb?.id === wb.id ? '当前' : '设为当前'}
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}

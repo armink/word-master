@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getStudents, createStudent, getWordbooks } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
+import { useWordbook } from '@/hooks/useWordbook'
 import type { Student, Wordbook } from '@/types'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { student, setStudent } = useStudent()
+  const { wordbook: currentWb } = useWordbook()
   const [students, setStudents] = useState<Student[]>([])
   const [wordbooks, setWordbooks] = useState<Wordbook[]>([])
   const [showPicker, setShowPicker] = useState(false)
@@ -90,7 +92,10 @@ export default function HomePage() {
         >
           <span className="text-3xl block mb-2">📚</span>
           <span className="text-base font-bold text-gray-800 block">单词本</span>
-          <span className="text-xs text-gray-400">管理词汇</span>
+          {currentWb
+            ? <span className="text-xs text-primary-600 font-medium truncate block max-w-full">{currentWb.name}</span>
+            : <span className="text-xs text-gray-400">管理词汇</span>
+          }
         </button>
       </div>
       <button

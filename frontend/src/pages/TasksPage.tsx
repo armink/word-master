@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getWordbooks, createQuizSession } from '@/api'
+import { createQuizSession } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
-import type { Wordbook, QuizType } from '@/types'
+import { useWordbook } from '@/hooks/useWordbook'
+import type { QuizType } from '@/types'
 
 const QUIZ_TYPES: { type: QuizType; label: string; desc: string }[] = [
   { type: 'en_to_zh', label: '英译中', desc: '看英文，写出中文含义' },
@@ -13,21 +14,10 @@ const QUIZ_TYPES: { type: QuizType; label: string; desc: string }[] = [
 export default function TasksPage() {
   const navigate = useNavigate()
   const { student } = useStudent()
-  const [wordbooks, setWordbooks] = useState<Wordbook[]>([])
-  const [selectedWb, setSelectedWb] = useState<Wordbook | null>(null)
+  const { wordbook: selectedWb } = useWordbook()
   const [quizType, setQuizType] = useState<QuizType>('en_to_zh')
-  const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    getWordbooks()
-      .then(wbs => {
-        setWordbooks(wbs)
-        if (wbs.length > 0) setSelectedWb(wbs[0])
-      })
-      .finally(() => setLoading(false))
-  }, [])
 
   const handleStart = async () => {
     if (!student) {
@@ -46,34 +36,23 @@ export default function TasksPage() {
     }
   }
 
-  if (loading) return <div className="p-4 text-center text-gray-400 pt-16">加载中…</div>
-
   return (
     <div className="p-4">
       <h1 className="text-xl font-bold text-gray-800 pt-4 mb-5">今日任务</h1>
 
-      {/* 选择单词本 */}
-      <p className="text-sm font-semibold text-gray-600 mb-2">选择单词本</p>
-      {wordbooks.length === 0 ? (
-        <p className="text-sm text-gray-400 mb-4">
-          还没有单词本，请先到「单词本」页面创建并导入词条
-        </p>
+      {/* 当前单词本 */}
+      {selectedWb ? (
+        <div className="bg-primary-50 border border-primary-200 rounded-2xl px-4 py-3 mb-5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-primary-500 mb-0.5">当前单词本</p>
+            <p className="font-semibold text-primary-800">{selectedWb.name}</p>
+            <p className="text-xs text-primary-400">{selectedWb.item_count} 个词条</p>
+          </div>
+          <span className="text-2xl">📚</span>
+        </div>
       ) : (
-        <div className="space-y-2 mb-5">
-          {wordbooks.map(wb => (
-            <button
-              key={wb.id}
-              onClick={() => setSelectedWb(wb)}
-              className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-colors ${
-                selectedWb?.id === wb.id
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-100 bg-white'
-              }`}
-            >
-              <span className="font-medium text-gray-800">{wb.name}</span>
-              <span className="text-xs text-gray-400 ml-2">{wb.item_count} 个词条</span>
-            </button>
-          ))}
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-5">
+          <p className="text-sm text-amber-700">请先到「单词本」页面，点击「设为当前」选择一个单词本</p>
         </div>
       )}
 
@@ -111,8 +90,10 @@ export default function TasksPage() {
       >
         {starting
           ? '创建中…'
+          : selectedWb && selectedWb.item_count > 0
+          ? `开始测验（${selectedWb.item_count} 个词条）`
           : selectedWb
-          ? `开始测验 ${selectedWb.item_count} 个词条`
+          ? '单词本暂无词条'
           : '请先选择单词本'}
       </button>
 

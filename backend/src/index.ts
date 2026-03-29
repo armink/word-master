@@ -20,7 +20,8 @@ app.use(cors({
   // 允许 localhost 和局域网任意 IP 访问（手机通过局域网 IP 访问前端时，
   // 请求经由 Vite proxy 转发，origin 是 Vite 服务器地址）
   origin: (origin, cb) => {
-    if (!origin || /^http:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):5173$/.test(origin)) {
+    // 允许 localhost 和局域网 IP（HTTP 和 HTTPS 均可，HTTPS 是移动端麦克风必需）
+    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):5173$/.test(origin)) {
       cb(null, true)
     } else {
       cb(new Error('Not allowed by CORS'))

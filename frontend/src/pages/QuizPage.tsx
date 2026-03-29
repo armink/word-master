@@ -75,12 +75,12 @@ export default function QuizPage() {
   const progress = totalItems > 0 ? ((totalItems - queue.length) / totalItems) : 0
   const realtimeAccuracy = totalItems > 0 ? Math.round((firstCorrectCount / totalItems) * 100) : 0
 
-  // 聚焦输入框
+  // 聚焦输入框：拼写阶段需要键盘，自动 focus；语音阶段不自动弹键盘（手机体验）
   useEffect(() => {
-    if (cardState === 'answering') {
+    if (cardState === 'answering' && session?.quiz_type === 'spelling') {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [cardState, currentItem])
+  }, [cardState, currentItem, session?.quiz_type])
 
   const handleSubmit = useCallback(async () => {
     if (!session || !currentItem || cardState !== 'answering') return
@@ -236,7 +236,12 @@ export default function QuizPage() {
                 <div className="mt-2">
                   <VoiceInput
                     lang={session.quiz_type === 'en_to_zh' ? 'zh_cn' : 'en_us'}
-                    onResult={text => { setUserAnswer(text); setVoiceError('') }}
+                    onResult={text => {
+                      setUserAnswer(text)
+                      setVoiceError('')
+                      // 语音填入文字，不主动 focus，避免弹出输入法遮住内容
+                      // 用户如需修改可直接点击输入框聚焦
+                    }}
                     onError={msg => setVoiceError(msg)}
                   />
                   {voiceError && (

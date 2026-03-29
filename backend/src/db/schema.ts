@@ -1,0 +1,83 @@
+import db from './client'
+
+export function initSchema() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS students (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT    NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS wordbooks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT    NOT NULL,
+      description TEXT,
+      created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS items (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      type        TEXT    NOT NULL CHECK(type IN ('word', 'phrase')),
+      english     TEXT    NOT NULL,
+      chinese     TEXT    NOT NULL,
+      phonetic    TEXT,
+      example_en  TEXT,
+      example_zh  TEXT,
+      created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE TABLE IF NOT EXISTS wordbook_items (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      wordbook_id INTEGER NOT NULL REFERENCES wordbooks(id) ON DELETE CASCADE,
+      item_id     INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(wordbook_id, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS student_mastery (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id       INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      item_id          INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      en_to_zh_level   INTEGER NOT NULL DEFAULT 0,
+      zh_to_en_level   INTEGER NOT NULL DEFAULT 0,
+      spelling_level   INTEGER,
+      last_reviewed_at INTEGER,
+      updated_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(student_id, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS quiz_sessions (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id       INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      wordbook_id      INTEGER NOT NULL REFERENCES wordbooks(id) ON DELETE CASCADE,
+      quiz_type        TEXT    NOT NULL CHECK(quiz_type IN ('en_to_zh', 'zh_to_en', 'spelling')),
+      status           TEXT    NOT NULL CHECK(status IN ('in_progress', 'passed', 'abandoned'))
+                               DEFAULT 'in_progress',
+      total_words      INTEGER NOT NULL,
+      pass_accuracy    REAL    NOT NULL DEFAULT 0.8,
+      final_accuracy   REAL,
+      duration_seconds INTEGER,
+      started_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+      finished_at      INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS quiz_answers (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id  INTEGER NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
+      item_id     INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      attempt     INTEGER NOT NULL DEFAULT 1,
+      user_answer TEXT    NOT NULL,
+      is_correct  INTEGER NOT NULL CHECK(is_correct IN (0, 1)),
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      answered_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_wordbook_items_wordbook ON wordbook_items(wordbook_id);
+    CREATE INDEX IF NOT EXISTS idx_wordbook_items_item     ON wordbook_items(item_id);
+    CREATE INDEX IF NOT EXISTS idx_student_mastery_student ON student_mastery(student_id);
+    CREATE INDEX IF NOT EXISTS idx_quiz_sessions_student   ON quiz_sessions(student_id);
+    CREATE INDEX IF NOT EXISTS idx_quiz_answers_session    ON quiz_answers(session_id);
+  `)
+
+  console.log('数据库表结构初始化完成')
+}

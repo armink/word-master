@@ -13,6 +13,7 @@ build/
 # 数据库文件（本地数据，不提交）
 *.db
 *.sqlite
+backend/data/
 
 # 编辑器
 .vscode/settings.json

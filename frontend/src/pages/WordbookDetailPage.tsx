@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getWordbookDetail, importWords, getPlan, createPlan, patchPlan } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
@@ -22,6 +22,7 @@ export default function WordbookDetailPage() {
   const [dailyNew, setDailyNew] = useState(10)
   const [planSaving, setPlanSaving] = useState(false)
   const [planError, setPlanError] = useState('')
+  const sliderRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!id) return
@@ -86,6 +87,15 @@ export default function WordbookDetailPage() {
 
   const totalItems = wordbook.items.length
   const estimateDays = dailyNew > 0 ? Math.ceil(totalItems / dailyNew) : '–'
+  const sliderMax = Math.min(50, totalItems)
+
+  const calcSliderValue = (clientX: number) => {
+    const el = sliderRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    setDailyNew(Math.max(1, Math.round(1 + ratio * (sliderMax - 1))))
+  }
 
   return (
     <div className="p-4 pb-32">
@@ -161,17 +171,36 @@ export default function WordbookDetailPage() {
                 <span className="ml-2 text-2xl font-bold text-primary-600">{dailyNew}</span>
                 <span className="text-xs text-gray-400 ml-1">词</span>
               </label>
-              <input
-                type="range"
-                min={1}
-                max={Math.min(50, totalItems)}
-                value={dailyNew}
-                onChange={e => setDailyNew(Number(e.target.value))}
-                className="w-full accent-primary-600"
-              />
+              {/* 自定义滑块：Pointer Events + setPointerCapture，保证移动端可拖拽 */}
+              <div
+                ref={sliderRef}
+                className="relative h-8 flex items-center cursor-pointer select-none"
+                style={{ touchAction: 'none' }}
+                onPointerDown={e => {
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                  calcSliderValue(e.clientX)
+                }}
+                onPointerMove={e => {
+                  if (e.buttons === 0) return
+                  calcSliderValue(e.clientX)
+                }}
+              >
+                {/* 轨道背景 */}
+                <div className="absolute w-full h-2 bg-gray-200 rounded-full" />
+                {/* 已填充部分 */}
+                <div
+                  className="absolute h-2 bg-primary-400 rounded-full"
+                  style={{ width: `${((dailyNew - 1) / Math.max(1, sliderMax - 1)) * 100}%` }}
+                />
+                {/* 滑块圆点 */}
+                <div
+                  className="absolute w-6 h-6 bg-white border-2 border-primary-500 rounded-full shadow-md"
+                  style={{ left: `calc(${((dailyNew - 1) / Math.max(1, sliderMax - 1)) * 100}% - 12px)` }}
+                />
+              </div>
               <div className="flex justify-between text-xs text-gray-400 mt-1">
                 <span>1</span>
-                <span>{Math.min(50, totalItems)}</span>
+                <span>{sliderMax}</span>
               </div>
             </div>
 

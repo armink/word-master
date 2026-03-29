@@ -61,13 +61,21 @@ router.get('/sessions/:id', (req, res) => {
   const session = db.prepare('SELECT * FROM quiz_sessions WHERE id = ?').get(req.params.id) as QuizSessionRow | undefined
   if (!session) { res.status(404).json({ error: '会话不存在' }); return }
 
-  const items = db.prepare(`
-    SELECT i.*, wi.sort_order
-    FROM items i
-    JOIN wordbook_items wi ON wi.item_id = i.id
-    WHERE wi.wordbook_id = ?
-    ORDER BY wi.sort_order ASC, i.id ASC
-  `).all(session.wordbook_id)
+  const items = session.quiz_type === 'spelling'
+    ? db.prepare(`
+        SELECT i.*, wi.sort_order
+        FROM items i
+        JOIN wordbook_items wi ON wi.item_id = i.id
+        WHERE wi.wordbook_id = ? AND i.type = 'word'
+        ORDER BY wi.sort_order ASC, i.id ASC
+      `).all(session.wordbook_id)
+    : db.prepare(`
+        SELECT i.*, wi.sort_order
+        FROM items i
+        JOIN wordbook_items wi ON wi.item_id = i.id
+        WHERE wi.wordbook_id = ?
+        ORDER BY wi.sort_order ASC, i.id ASC
+      `).all(session.wordbook_id)
 
   res.json({ ...session, items })
 })

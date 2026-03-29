@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getQuizSession, submitAnswer, finishSession } from '@/api'
 import type { Item, QuizSessionDetail, QuizType } from '@/types'
+import TtsButton from '@/components/TtsButton'
+import VoiceInput from '@/components/VoiceInput'
 
 type CardState = 'answering' | 'correct' | 'wrong'
 
@@ -44,6 +46,7 @@ export default function QuizPage() {
   const [isFirstAttempt, setIsFirstAttempt] = useState<Set<number>>(new Set())
   const [cardStartTime, setCardStartTime] = useState(Date.now())
   const [finishing, setFinishing] = useState(false)
+  const [voiceError, setVoiceError] = useState('')
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -120,6 +123,7 @@ export default function QuizPage() {
       autoAdvanceTimer.current = null
     }
     setUserAnswer('')
+    setVoiceError('')
     setCardStartTime(Date.now())
 
     if (correct) {
@@ -199,9 +203,14 @@ export default function QuizPage() {
                  session.quiz_type === 'zh_to_en' ? '这个中文的英文怎么说？' :
                  '请拼写这个单词'}
               </p>
-              <p className="text-3xl font-bold text-gray-800 mb-6 leading-tight">
-                {quizPrompt(currentItem, session.quiz_type)}
-              </p>
+              <div className="flex items-start gap-3 mb-6">
+                <p className="flex-1 text-3xl font-bold text-gray-800 leading-tight">
+                  {quizPrompt(currentItem, session.quiz_type)}
+                </p>
+                {session.quiz_type === 'en_to_zh' && (
+                  <TtsButton text={currentItem.english} className="w-10 h-10 shrink-0 mt-1" />
+                )}
+              </div>
               {currentItem.phonetic && session.quiz_type === 'en_to_zh' && (
                 <p className="text-sm text-gray-400 -mt-4 mb-4">[{currentItem.phonetic}]</p>
               )}
@@ -213,6 +222,18 @@ export default function QuizPage() {
                 placeholder={quizPlaceholder(session.quiz_type)}
                 className="w-full border-2 border-gray-200 rounded-2xl px-4 py-3 text-lg outline-none focus:border-primary-400 bg-gray-50"
               />
+              {session.quiz_type !== 'spelling' && (
+                <div className="mt-2">
+                  <VoiceInput
+                    lang={session.quiz_type === 'en_to_zh' ? 'zh_cn' : 'en_us'}
+                    onResult={text => { setUserAnswer(text); setVoiceError('') }}
+                    onError={msg => setVoiceError(msg)}
+                  />
+                  {voiceError && (
+                    <p className="text-red-500 text-xs mt-1 text-center">{voiceError}</p>
+                  )}
+                </div>
+              )}
               <button
                 onClick={handleSubmit}
                 disabled={!userAnswer.trim()}
@@ -229,8 +250,11 @@ export default function QuizPage() {
               <p className="text-4xl mb-3">✅</p>
               <p className="text-xl font-bold mb-4">正确！</p>
               <div className="bg-white/20 rounded-2xl p-4 text-left">
-                <p className="text-lg font-bold">{currentItem.english}</p>
-                <p className="text-base mt-1">{currentItem.chinese}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-lg font-bold">{currentItem.english}</p>
+                  <TtsButton text={currentItem.english} className="w-8 h-8 shrink-0" />
+                </div>
+                <p className="text-base">{currentItem.chinese}</p>
                 {currentItem.example_en && (
                   <p className="text-sm mt-3 opacity-80 italic">{currentItem.example_en}</p>
                 )}
@@ -261,11 +285,14 @@ export default function QuizPage() {
                 </div>
                 <div>
                   <p className="text-xs opacity-70">正确答案</p>
-                  <p className="text-lg font-bold">
-                    {session.quiz_type === 'en_to_zh'
-                      ? currentItem.chinese
-                      : currentItem.english}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-lg font-bold">
+                      {session.quiz_type === 'en_to_zh'
+                        ? currentItem.chinese
+                        : currentItem.english}
+                    </p>
+                    <TtsButton text={currentItem.english} className="w-8 h-8 shrink-0" />
+                  </div>
                 </div>
               </div>
               <button

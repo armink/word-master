@@ -6,6 +6,8 @@ import studentsRouter from './routes/students'
 import wordbooksRouter from './routes/wordbooks'
 import quizRouter from './routes/quiz'
 import recordsRouter from './routes/records'
+import ttsRouter from './routes/tts'
+import sttRouter from './routes/stt'
 
 dotenv.config()
 
@@ -27,6 +29,8 @@ app.use('/api/students', studentsRouter)
 app.use('/api/wordbooks', wordbooksRouter)
 app.use('/api/quiz', quizRouter)
 app.use('/api/records', recordsRouter)
+app.use('/api/tts', ttsRouter)
+app.use('/api/stt', sttRouter)
 
 app.listen(PORT, () => {
   console.log(`后端服务运行在 http://localhost:${PORT}`)

@@ -79,17 +79,44 @@ export async function checkSemanticMatch(
   }
 
   // Stage 2: 关键词包含
-  // 策略：从标准答案提取所有长度 2-4 的连续字符片段（中文词通常 2-4 字），
-  // 只要用户答案包含任意一个片段，视为命中核心概念、判为正确。
-  // e.g. 标准"擅长做某事" → 片段含"擅长"，用户说"他很擅长" → 命中
+  // 策略：从标准答案提取连续字符片段
+  //  - 正向匹配（判对）：需要长度 2-4 的片段出现在用户答案中（防止单字误判）
+  //  - 否定检测（拒绝）：1-4 字片段中，只要有任何一个在答案中被否定词修饰，
+  //    且没有同时存在未被否定的 2-4 字片段，则直接拒绝，不走 Stage 3。
+  //    这样可以捕获"不丑"（单字被否定）和"没有丑陋"（双字否定前缀）等情形。
+  const NEGATION = new Set(['不', '没', '未', '非', '别', '无', '莫'])
+
+  // 生成 2-4 字片段（用于正向匹配）
   const bigrams: string[] = []
   for (let len = 2; len <= 4; len++) {
     for (let i = 0; i <= normStd.length - len; i++) {
       bigrams.push(normStd.slice(i, i + len))
     }
   }
-  const uniqueBigrams = [...new Set(bigrams)].filter(k => k.length >= 2)
-  if (uniqueBigrams.length > 0 && uniqueBigrams.some(k => normAns.includes(k))) {
+  const uniqueBigrams = [...new Set(bigrams)]
+
+  // 再收集单字符（仅用于否定检测，不用于正向匹配）
+  const stdSingleChars = [...new Set(normStd.split(''))]
+  const allTokens = [...stdSingleChars, ...uniqueBigrams]   // 1-4 字，仅用于否定检测
+
+  function isNegated(keyword: string): boolean {
+    const idx = normAns.indexOf(keyword)
+    if (idx < 0) return false
+    // 单字否定：不X、没X 等
+    if (idx > 0 && NEGATION.has(normAns[idx - 1])) return true
+    // 双字否定："没有xxx"
+    if (idx > 1 && normAns[idx - 2] === '没' && normAns[idx - 1] === '有') return true
+    return false
+  }
+
+  const hasNegatedToken    = allTokens.some(k => isNegated(k))
+  const hasUnNegatedBigram = uniqueBigrams.some(k => normAns.includes(k) && !isNegated(k))
+
+  if (hasNegatedToken && !hasUnNegatedBigram) {
+    // 用户答案是对标准答案的否定表达，直接拒绝（不走 Stage 3，向量模型不理解否定语义）
+    return { match: false, score: 0, method: 'keyword' }
+  }
+  if (uniqueBigrams.length > 0 && hasUnNegatedBigram) {
     return { match: true, score: 0.85, method: 'keyword' }
   }
 
@@ -98,6 +125,7 @@ export async function checkSemanticMatch(
     return { match: false, score: 0, method: 'keyword' }
   }
   const score = await cosineSimilarity(standard, userAnswer)
-  // 阈值 0.60：在"成语 ↔ 白话释义"场景下得分约 0.62，不相关词得分约 0.36-0.45
-  return { match: score >= 0.60, score, method: 'semantic' }
+  // 阈值 0.76：经实测，真近义词最低分（好看↔美丽）= 0.771，
+  // 跨义形容词（小气↔温柔）= 0.756，0.76 刚好在两者之间。
+  return { match: score >= 0.76, score, method: 'semantic' }
 }

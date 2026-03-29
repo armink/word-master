@@ -98,6 +98,6 @@ export async function checkSemanticMatch(
     return { match: false, score: 0, method: 'keyword' }
   }
   const score = await cosineSimilarity(standard, userAnswer)
-  // 阈值 0.70，适合中文语义等价判断
-  return { match: score >= 0.70, score, method: 'semantic' }
+  // 阈值 0.60：在"成语 ↔ 白话释义"场景下得分约 0.62，不相关词得分约 0.36-0.45
+  return { match: score >= 0.60, score, method: 'semantic' }
 }

@@ -52,7 +52,6 @@ export default function QuizPage() {
   const [finishing, setFinishing] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [isChecking, setIsChecking] = useState(false)
-  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -86,10 +85,6 @@ export default function QuizPage() {
   }, [finishing, sessionId, navigate])
 
   const advanceQueue = useCallback((correct: boolean) => {
-    if (autoAdvanceTimer.current) {
-      clearTimeout(autoAdvanceTimer.current)
-      autoAdvanceTimer.current = null
-    }
     setUserAnswer('')
     setVoiceError('')
     setCardStartTime(Date.now())
@@ -130,10 +125,7 @@ export default function QuizPage() {
       })
     } catch { /* ignore */ }
 
-    // 答对 1.5s 后自动进入下一题；答错不自动跳，等用户手动点继续
-    if (correct) {
-      autoAdvanceTimer.current = setTimeout(() => advanceQueue(correct), 1500)
-    }
+    // 答对/答错均等用户手动点继续
   }, [session, currentItem, cardState, userAnswer, cardStartTime, isFirstAttempt, sessionId, advanceQueue])
 
   if (!session || (queue.length === 0 && !finishing)) {
@@ -295,7 +287,7 @@ export default function QuizPage() {
                       : 'bg-red-400 text-white hover:bg-red-500'
                     }`}
                 >
-                  {isCorrect ? '下一题 →' : '继续 →'}
+                  {isCorrect ? '继续 →' : '再来一次 →'}
                 </button>
               )}
             </div>

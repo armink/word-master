@@ -55,12 +55,14 @@ feat(quiz): 添加英译中测验阶段基础流程
 
 fix(speech): 修复讯飞 WebSocket 断连后不重试的问题
 
-docs: 更新 prompt.md 补充 MVP 范围说明
+docs: 更新需求文档补充 MVP 范围说明
 
 chore(config): 添加 .gitignore 和提交规范文档
 
 refactor(db): 将单词表查询抽取为独立 Repository 层
 ```
+
+> 注意：提交日志统一使用**中文**编写，commit message 不使用英文。
 
 ## 分支规范
 

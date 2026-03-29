@@ -8,6 +8,8 @@ import quizRouter from './routes/quiz'
 import recordsRouter from './routes/records'
 import ttsRouter from './routes/tts'
 import sttRouter from './routes/stt'
+import semanticRouter from './routes/semantic'
+import { warmupSemantic } from './services/semantic'
 
 dotenv.config()
 
@@ -31,9 +33,12 @@ app.use('/api/quiz', quizRouter)
 app.use('/api/records', recordsRouter)
 app.use('/api/tts', ttsRouter)
 app.use('/api/stt', sttRouter)
+app.use('/api/semantic', semanticRouter)
 
 app.listen(PORT, () => {
   console.log(`后端服务运行在 http://localhost:${PORT}`)
+  // 后台预热语义模型，首个请求前完成加载
+  warmupSemantic()
 })
 
 export default app

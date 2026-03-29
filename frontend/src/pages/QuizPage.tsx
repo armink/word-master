@@ -1,20 +1,27 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getQuizSession, submitAnswer, finishSession } from '@/api'
+import { getQuizSession, submitAnswer, finishSession, checkSemantic } from '@/api'
 import type { Item, QuizSessionDetail, QuizType } from '@/types'
 import TtsButton from '@/components/TtsButton'
 import VoiceInput from '@/components/VoiceInput'
 
 type CardState = 'answering' | 'correct' | 'wrong'
 
-function checkAnswer(item: Item, quizType: QuizType, userAnswer: string): boolean {
-  const answer = userAnswer.trim().toLowerCase()
+async function checkAnswer(item: Item, quizType: QuizType, userAnswer: string): Promise<boolean> {
+  const answer = userAnswer.trim()
   if (!answer) return false
   if (quizType === 'en_to_zh') {
-    return answer === item.chinese.trim().toLowerCase()
+    // 调用后端三阶段语义匹配（精确 → 关键词 → MiniLM 向量）
+    try {
+      const result = await checkSemantic(item.chinese, answer)
+      return result.match
+    } catch {
+      // 降级为精确匹配，避免网络抖动中断测验
+      return answer.toLowerCase() === item.chinese.trim().toLowerCase()
+    }
   }
   // zh_to_en & spelling: case-insensitive exact match
-  return answer === item.english.trim().toLowerCase()
+  return answer.toLowerCase() === item.english.trim().toLowerCase()
 }
 
 function quizTypeLabel(t: QuizType) {
@@ -47,6 +54,7 @@ export default function QuizPage() {
   const [cardStartTime, setCardStartTime] = useState(Date.now())
   const [finishing, setFinishing] = useState(false)
   const [voiceError, setVoiceError] = useState('')
+  const [isChecking, setIsChecking] = useState(false)
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -78,7 +86,9 @@ export default function QuizPage() {
     if (!session || !currentItem || cardState !== 'answering') return
 
     const durationMs = Date.now() - cardStartTime
-    const correct = checkAnswer(currentItem, session.quiz_type, userAnswer)
+    setIsChecking(true)
+    const correct = await checkAnswer(currentItem, session.quiz_type, userAnswer)
+    setIsChecking(false)
 
     setCardState(correct ? 'correct' : 'wrong')
 
@@ -236,10 +246,10 @@ export default function QuizPage() {
               )}
               <button
                 onClick={handleSubmit}
-                disabled={!userAnswer.trim()}
+                disabled={!userAnswer.trim() || isChecking}
                 className="w-full mt-3 bg-primary-600 text-white py-3.5 rounded-2xl text-base font-bold disabled:opacity-40 active:scale-95 transition-transform"
               >
-                提交 →
+                {isChecking ? '判断中…' : '提交 →'}
               </button>
             </>
           )}

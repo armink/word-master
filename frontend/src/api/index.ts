@@ -82,3 +82,10 @@ export const getRecords = (student_id: number, wordbook_id?: number) => {
     : `?student_id=${student_id}`
   return request<ItemWithMastery[]>(`/records${qs}`)
 }
+
+// ---- Semantic ----
+export const checkSemantic = (standard: string, answer: string) =>
+  request<{ match: boolean; score: number; method: string }>('/semantic/check', {
+    method: 'POST',
+    body: JSON.stringify({ standard, answer }),
+  })

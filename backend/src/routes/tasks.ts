@@ -274,4 +274,62 @@ router.post('/extra', (req, res) => {
   res.status(201).json(result)
 })
 
+// ── GET /api/tasks/stats ──────────────────────────────────────────
+// 单词本整体学习进度统计
+// Query: { student_id, wordbook_id }
+router.get('/stats', (req, res) => {
+  const { student_id, wordbook_id } = req.query
+  if (!student_id || !wordbook_id) {
+    res.status(400).json({ error: '缺少 student_id / wordbook_id' }); return
+  }
+  const sid = Number(student_id), wid = Number(wordbook_id)
+  const today = todayInt()
+
+  const totalItems = (db.prepare(
+    'SELECT COUNT(*) AS c FROM wordbook_items WHERE wordbook_id=?'
+  ).get(wid) as { c: number }).c
+
+  const introduced = (db.prepare(`
+    SELECT COUNT(*) AS c FROM student_mastery sm
+    JOIN wordbook_items wi ON wi.item_id = sm.item_id
+    WHERE sm.student_id=? AND wi.wordbook_id=? AND sm.introduced_date > 0
+  `).get(sid, wid) as { c: number }).c
+
+  const todayNew = (db.prepare(`
+    SELECT COUNT(*) AS c FROM student_mastery sm
+    JOIN wordbook_items wi ON wi.item_id = sm.item_id
+    WHERE sm.student_id=? AND wi.wordbook_id=? AND sm.introduced_date=?
+  `).get(sid, wid, today) as { c: number }).c
+
+  const zhToEnActive = (db.prepare(`
+    SELECT COUNT(*) AS c FROM student_mastery sm
+    JOIN wordbook_items wi ON wi.item_id = sm.item_id
+    WHERE sm.student_id=? AND wi.wordbook_id=? AND sm.zh_to_en_stage > 0
+  `).get(sid, wid) as { c: number }).c
+
+  const spellingActive = (db.prepare(`
+    SELECT COUNT(*) AS c FROM student_mastery sm
+    JOIN wordbook_items wi ON wi.item_id = sm.item_id
+    WHERE sm.student_id=? AND wi.wordbook_id=? AND sm.spelling_stage > 0
+  `).get(sid, wid) as { c: number }).c
+
+  // 今日复习完成数（今天 last_reviewed_at 有值的词）
+  const todayReviewedSessions = (db.prepare(`
+    SELECT COUNT(DISTINCT qa.item_id) AS c
+    FROM quiz_answers qa
+    JOIN quiz_sessions qs ON qs.id = qa.session_id
+    WHERE qs.student_id=? AND qs.wordbook_id=? AND qa.is_correct=1
+      AND qa.answered_at >= CAST(strftime('%s', date('now')) AS INTEGER)
+  `).get(sid, wid) as { c: number }).c
+
+  res.json({
+    total_items: totalItems,
+    introduced,
+    today_new: todayNew,
+    zh_to_en_active: zhToEnActive,
+    spelling_active: spellingActive,
+    today_correct: todayReviewedSessions,
+  })
+})
+
 export default router

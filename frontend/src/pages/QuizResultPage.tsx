@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getQuizSession, getTodayTask, startExtraSession } from '@/api'
+import { getQuizSession, getTodayTask, startExtraSession, getWordbookStats } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
 import { useWordbook } from '@/hooks/useWordbook'
-import type { QuizSession, TodayTask } from '@/types'
+import type { QuizSession, TodayTask, WordbookStats } from '@/types'
 
 function formatDuration(secs: number | null) {
   if (!secs) return '—'
@@ -21,6 +21,7 @@ export default function QuizResultPage() {
   const [loading, setLoading] = useState(true)
   const [todayTask, setTodayTask] = useState<TodayTask | null>(null)
   const [extraStarting, setExtraStarting] = useState(false)
+  const [stats, setStats] = useState<WordbookStats | null>(null)
 
   useEffect(() => {
     if (!sessionId) return
@@ -34,6 +35,9 @@ export default function QuizResultPage() {
     getTodayTask(student.id, selectedWb.id)
       .then(setTodayTask)
       .catch(() => { /* 无计划时忽略 */ })
+    getWordbookStats(student.id, selectedWb.id)
+      .then(setStats)
+      .catch(() => {})
   }, [student?.id, selectedWb?.id])
 
   const handleExtra = async (count: number) => {
@@ -103,6 +107,49 @@ export default function QuizResultPage() {
             </div>
           </div>
         </div>
+
+        {/* 今日成果 + 整体进度 */}
+        {stats && stats.total_items > 0 && (
+          <div className="w-full bg-white rounded-2xl p-4 shadow-sm mb-4 border border-gray-100">
+            <p className="text-sm font-semibold text-gray-700 mb-3">📊 整体学习进度</p>
+
+            {/* 进度条 */}
+            <div className="mb-3">
+              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <span>已引入词条</span>
+                <span className="font-medium text-primary-600">{stats.introduced} / {stats.total_items}</span>
+              </div>
+              <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary-400 rounded-full transition-all"
+                  style={{ width: `${Math.round((stats.introduced / stats.total_items) * 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 今日 + 阶段 */}
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-green-50 rounded-xl py-2">
+                <p className="text-lg font-bold text-green-600">{stats.today_new}</p>
+                <p className="text-green-600">今日新学</p>
+              </div>
+              <div className={`rounded-xl py-2 ${stats.zh_to_en_active > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                <p className={`text-lg font-bold ${stats.zh_to_en_active > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{stats.zh_to_en_active}</p>
+                <p className={stats.zh_to_en_active > 0 ? 'text-blue-600' : 'text-gray-400'}>🔓 中→英</p>
+              </div>
+              <div className={`rounded-xl py-2 ${stats.spelling_active > 0 ? 'bg-purple-50' : 'bg-gray-50'}`}>
+                <p className={`text-lg font-bold ${stats.spelling_active > 0 ? 'text-purple-600' : 'text-gray-400'}`}>{stats.spelling_active}</p>
+                <p className={stats.spelling_active > 0 ? 'text-purple-600' : 'text-gray-400'}>🔓 拼写</p>
+              </div>
+            </div>
+
+            {stats.zh_to_en_active === 0 && stats.introduced > 0 && (
+              <p className="text-xs text-gray-400 mt-2 text-center">
+                💡 英→中 完成 2 次复习后自动解锁中→英阶段
+              </p>
+            )}
+          </div>
+        )}
 
         {/* 继续学习新词（有学习计划且有剩余新词时显示） */}
         {remainingNew > 0 && (

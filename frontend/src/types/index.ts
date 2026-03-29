@@ -116,3 +116,12 @@ export interface PlanSessionDetail {
   session: QuizSession
   items: (Item & { item_quiz_type: QuizType; sort_order: number })[]
 }
+
+export interface WordbookStats {
+  total_items: number
+  introduced: number
+  today_new: number
+  zh_to_en_active: number
+  spelling_active: number
+  today_correct: number
+}

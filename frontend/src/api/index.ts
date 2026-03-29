@@ -2,7 +2,7 @@ import type {
   Student, Wordbook, WordbookDetail,
   QuizSessionDetail, QuizAnswer, QuizFinishResult,
   ItemWithMastery, QuizType,
-  StudyPlan, TodayTask, PlanSessionDetail,
+  StudyPlan, TodayTask, PlanSessionDetail, WordbookStats,
 } from '@/types'
 
 const BASE = '/api'
@@ -124,3 +124,6 @@ export const startExtraSession = (student_id: number, wordbook_id: number, extra
     method: 'POST',
     body: JSON.stringify({ student_id, wordbook_id, extra_count }),
   })
+
+export const getWordbookStats = (student_id: number, wordbook_id: number) =>
+  request<WordbookStats>(`/tasks/stats?student_id=${student_id}&wordbook_id=${wordbook_id}`)

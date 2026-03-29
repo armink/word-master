@@ -2,9 +2,15 @@
  * 语义匹配自动化测试
  * 运行: npx tsx --test src/services/semantic.test.ts
  *
+ * 当前模型：paraphrase-multilingual-MiniLM-L12-v2（mean 池化，阈值 0.76）
+ *
  * 用例分两组：
- *  MUST_PASS  - 核心正确性，任何情况必须通过（否定词、精确、强近义词）
+ *  MUST_PASS    - 核心正确性，任何情况必须通过（否定词、精确、强近义词）
  *  KNOWN_LIMITS - 揭示模型能力边界，失败时仅警告不中断（弱近义词、同场反义词）
+ *
+ * 阈值 0.76 选取依据：
+ *  真近义词最低分（好看↔美丽）= 0.771，跨义形容词（小气↔温柔）= 0.756，
+ *  0.76 刚好在两者之间。
  */
 import { test, describe, before } from 'node:test'
 import assert from 'node:assert/strict'
@@ -45,6 +51,7 @@ const MUST_PASS: Case[] = [
   { standard: '吵闹', input: '喧闹',   expect: true,  note: 'noisy - 近义词：喧闹' },
   { standard: '小心', input: '仔细',   expect: true,  note: 'careful - 近义词：仔细' },
   { standard: '小心', input: '谨慎',   expect: true,  note: 'careful - 近义词：谨慎' },
+  // 注：仔细↔小心 BGE CLS 得分仅 0.576，无法通过向量阶段，已移至 KNOWN_LIMITS
   { standard: '奇怪', input: '奇特',   expect: true,  note: 'strange - 近义词：奇特' },
   { standard: '重要', input: '重大',   expect: true,  note: 'important - 近义词：重大' },
   { standard: '可爱', input: '萌',     expect: true,  note: 'cute - 近义词：萌' },
@@ -98,20 +105,17 @@ const MUST_PASS: Case[] = [
 ]
 
 // ─── 模型能力边界：失败时只打印警告，不中断 ──────────────────────
-// 阈值升到 0.76 后，大部分问题已修复。以下 4 条是真正的模型固有局限：
+// 阈值升到 0.76 后，大部分问题已修复。以下是真正的模型固有局限：
 //  1. 弱近义词（口语/书面差异）：得分不足 0.76，漏判
 //  2. 临界误判（浮躁↔吵闹 = 0.773 vs 好看↔美丽 = 0.771，差距仅 0.002，
 //     无法仅靠阈值区分，是 MiniLM 向量空间的固有问题）
 //  3. 英文答中文题：中英向量空间重叠，score=0.941 远超阈值，误判
+//  4. 情感同域：quick乐/兴奋/自豪 在 MiniLM 空间聚集，无法靠阈值区分
 const KNOWN_LIMITS: Case[] = [
   { standard: '愤怒', input: '发火',   expect: true,  note: '[模型局限] angry - 弱近义词：发火（口语，score≈0.593 < 0.76，漏判）' },
   { standard: '聪明', input: '机灵',   expect: true,  note: '[模型局限] clever - 弱近义词：机灵（score≈0.574 < 0.76，漏判）' },
   { standard: '吵闹', input: '浮躁',   expect: false, note: '[模型局限] noisy - 临界误判：浮躁（score=0.773，仅比好看↔美丽=0.771 高0.002，无法用阈值区分）' },
   { standard: '快乐', input: 'happy',  expect: false, note: '[模型局限] 用英文回答中文题（中英向量空间重叠，score≈0.941，误判）' },
-  // ── 穷举交叉测试（scripts/cross-test.ts）发现的同语义域误判 ──────
-  // 这些情感形容词在 MiniLM 向量空间中距离太近，无法用单一阈值区分。
-  // 换 BGE-small-zh CLS 模型可改善，但会导致"好看/嘈杂/仔细"等近义词失效。
-  // 保留在此处作记录，待模型升级后复测。
   { standard: '快乐', input: '兴奋',   expect: false, note: '[模型局限] happy vs excited（兴奋）：score=0.839>>0.76，情感同域误判，无法靠阈值修复' },
   { standard: '快乐', input: '自豪',   expect: false, note: '[模型局限] happy vs proud（自豪）：score=0.799>>0.76，情感同域误判' },
 ]

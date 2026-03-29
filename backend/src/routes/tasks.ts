@@ -149,21 +149,27 @@ router.post('/start', (req, res) => {
   if (!plan) { res.status(404).json({ error: '未找到激活的学习计划' }); return }
 
   // 已有进行中 session → 直接返回，防止重复创建导致词数翻倍
+  // 但若计划在 session 创建之后被修改（updated_at > started_at），则废弃旧 session 并重建
   const existingSession = db.prepare(`
     SELECT * FROM quiz_sessions
     WHERE student_id = ? AND wordbook_id = ? AND status = 'in_progress'
     ORDER BY started_at DESC LIMIT 1
   `).get(sid, wid) as QuizSessionRow | undefined
   if (existingSession) {
-    const items = db.prepare(`
-      SELECT i.*, si.quiz_type AS item_quiz_type, si.sort_order
-      FROM session_items si
-      JOIN items i ON i.id = si.item_id
-      WHERE si.session_id = ?
-      ORDER BY si.sort_order ASC
-    `).all(existingSession.id)
-    res.json({ session: existingSession, items })
-    return
+    if (existingSession.started_at >= plan.updated_at) {
+      // 计划未变更，直接复用旧 session
+      const items = db.prepare(`
+        SELECT i.*, si.quiz_type AS item_quiz_type, si.sort_order
+        FROM session_items si
+        JOIN items i ON i.id = si.item_id
+        WHERE si.session_id = ?
+        ORDER BY si.sort_order ASC
+      `).all(existingSession.id)
+      res.json({ session: existingSession, items })
+      return
+    }
+    // 计划已更新，废弃旧 session
+    db.prepare(`UPDATE quiz_sessions SET status = 'abandoned' WHERE id = ?`).run(existingSession.id)
   }
 
   const taskItems = buildTodayItems(sid, wid, plan)

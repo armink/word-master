@@ -2,6 +2,10 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { initSchema } from './db/schema'
+import studentsRouter from './routes/students'
+import wordbooksRouter from './routes/wordbooks'
+import quizRouter from './routes/quiz'
+import recordsRouter from './routes/records'
 
 dotenv.config()
 
@@ -19,11 +23,10 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() })
 })
 
-// 路由（后续逐步添加）
-// app.use('/api/wordbooks', wordbooksRouter)
-// app.use('/api/items', itemsRouter)
-// app.use('/api/quiz', quizRouter)
-// app.use('/api/records', recordsRouter)
+app.use('/api/students', studentsRouter)
+app.use('/api/wordbooks', wordbooksRouter)
+app.use('/api/quiz', quizRouter)
+app.use('/api/records', recordsRouter)
 
 app.listen(PORT, () => {
   console.log(`后端服务运行在 http://localhost:${PORT}`)

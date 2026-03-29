@@ -4,6 +4,7 @@ import { getQuizSession, submitAnswer, finishSession, checkSemantic } from '@/ap
 import type { Item, QuizSessionDetail, QuizType } from '@/types'
 import TtsButton from '@/components/TtsButton'
 import VoiceInput from '@/components/VoiceInput'
+import { playCorrect, playWrong } from '@/utils/sound'
 
 type CardState = 'answering' | 'correct' | 'wrong'
 
@@ -111,6 +112,7 @@ export default function QuizPage() {
     const correct = await checkAnswer(currentItem, session.quiz_type, answer)
     setIsChecking(false)
     setCardState(correct ? 'correct' : 'wrong')
+    if (correct) playCorrect(); else playWrong()
 
     const first = isFirstAttempt.has(currentItem.id)
     if (correct && first) setFirstCorrectCount(prev => prev + 1)

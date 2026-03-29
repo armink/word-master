@@ -209,7 +209,10 @@ export default function QuizPage() {
                         )}
                       </p>
                       {currentItem.example_en && (
-                        <p className="text-xs text-gray-500 italic">{currentItem.example_en}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-xs text-gray-500 italic flex-1">{currentItem.example_en}</p>
+                          <TtsButton text={currentItem.example_en} className="w-5 h-5 shrink-0" />
+                        </div>
                       )}
                       {currentItem.example_zh && (
                         <p className="text-xs text-gray-400">{currentItem.example_zh}</p>
@@ -221,10 +224,15 @@ export default function QuizPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-red-700 font-semibold text-sm">❌ 正确答案：</p>
                         <p className="text-red-800 font-bold">{correctAnswer}</p>
-                        <TtsButton text={currentItem.english} className="w-6 h-6 shrink-0" />
+                        {session.quiz_type !== 'en_to_zh' && (
+                          <TtsButton text={currentItem.english} className="w-6 h-6 shrink-0" />
+                        )}
                       </div>
                       {currentItem.example_en && (
-                        <p className="text-xs text-gray-500 italic">{currentItem.example_en}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-xs text-gray-500 italic flex-1">{currentItem.example_en}</p>
+                          <TtsButton text={currentItem.example_en} className="w-5 h-5 shrink-0" />
+                        </div>
                       )}
                       {currentItem.example_zh && (
                         <p className="text-xs text-gray-400">{currentItem.example_zh}</p>
@@ -287,7 +295,7 @@ export default function QuizPage() {
                       : 'bg-red-400 text-white hover:bg-red-500'
                     }`}
                 >
-                  {isCorrect ? '继续 →' : '再来一次 →'}
+                  {isCorrect ? '继续 →' : '下一个 →'}
                 </button>
               )}
             </div>

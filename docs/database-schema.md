@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS student_mastery (
   item_id          INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
   en_to_zh_level   INTEGER NOT NULL DEFAULT 0,  -- 英译中熟练度 0-100
   zh_to_en_level   INTEGER NOT NULL DEFAULT 0,  -- 中译英熟练度 0-100
-  spelling_level   INTEGER NOT NULL DEFAULT 0,  -- 拼写熟练度 0-100
+  spelling_level   INTEGER,                      -- 拼写熟练度 0-100，短语(type=phrase)为 NULL
   last_reviewed_at INTEGER,                      -- 最近复习时间（为艾宾浩斯预留）
   updated_at       INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(student_id, item_id)
@@ -160,7 +160,7 @@ export interface StudentMasteryRow {
   item_id: number;
   en_to_zh_level: number;  // 0-100
   zh_to_en_level: number;  // 0-100
-  spelling_level: number;  // 0-100
+  spelling_level: number | null;  // 0-100，短语(type=phrase)为 null
   last_reviewed_at: number | null;
   updated_at: number;
 }

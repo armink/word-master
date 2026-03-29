@@ -128,9 +128,24 @@ export default function QuizPage() {
         duration_ms: durationMs,
       })
     } catch { /* ignore */ }
-
-    // 答对/答错均等用户手动点继续
   }, [session, currentItem, currentQuizType, cardState, userAnswer, cardStartTime, isFirstAttempt, sessionId, advanceQueue])
+
+  const handleSkip = useCallback(async () => {
+    if (!session || !currentItem || cardState !== 'answering') return
+    const durationMs = Date.now() - cardStartTime
+    playWrong()
+    const first = isFirstAttempt.has(currentItem.id)
+    if (first) setIsFirstAttempt(prev => { const s = new Set(prev); s.delete(currentItem.id); return s })
+    setCardState('wrong')
+    try {
+      await submitAnswer(Number(sessionId), {
+        item_id: currentItem.id,
+        user_answer: '',
+        is_correct: false,
+        duration_ms: durationMs,
+      })
+    } catch { /* ignore */ }
+  }, [session, currentItem, cardState, cardStartTime, isFirstAttempt, sessionId])
 
   if (!session || (queue.length === 0 && !finishing)) {
     return <div className="flex items-center justify-center h-screen text-gray-400">加载中…</div>
@@ -203,15 +218,10 @@ export default function QuizPage() {
                 >
                   {isCorrect && (
                     <>
-                      <p className="text-emerald-700 font-semibold text-sm mb-1">
-                        ✅ 正确！
-                        {/* 语义近义词：用户答案与标准答案不同时显示"你说：xxx" */}
-                        {userAnswer.trim() !== correctAnswer && (
-                          <span className="font-normal text-emerald-600 opacity-80 ml-1">
-                            （你说：{userAnswer}）
-                          </span>
-                        )}
-                      </p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-emerald-700 font-semibold text-sm">✅ 正确！</p>
+                        <p className="text-emerald-800 font-bold">{correctAnswer}</p>
+                      </div>
                       {currentItem.example_en && (
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <p className="text-xs text-gray-500 italic flex-1">{currentItem.example_en}</p>
@@ -251,10 +261,11 @@ export default function QuizPage() {
             <input
               ref={inputRef}
               value={userAnswer}
-              onChange={e => isAnswering && setUserAnswer(e.target.value)}
+              onChange={e => isAnswering && currentQuizType === 'spelling' && setUserAnswer(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && isAnswering && userAnswer.trim() && handleSubmit()}
               placeholder={isAnswering ? quizPlaceholder(currentQuizType) : ''}
               disabled={!isAnswering}
+              readOnly={currentQuizType !== 'spelling'}
               className={`w-full border-2 rounded-2xl px-4 py-3 text-lg outline-none transition-colors
                 ${isAnswering
                   ? 'border-gray-200 focus:border-primary-400 bg-gray-50'
@@ -279,6 +290,14 @@ export default function QuizPage() {
                       onError={msg => setVoiceError(msg)}
                       disabled={isChecking}
                     />
+                  )}
+                  {currentQuizType !== 'spelling' && !isChecking && (
+                    <button
+                      onClick={handleSkip}
+                      className="w-full mt-2 py-2 rounded-2xl text-sm text-gray-400 border border-gray-200 bg-white hover:bg-gray-50 active:scale-95 transition-transform"
+                    >
+                      不知道
+                    </button>
                   )}
                   {voiceError && (
                     <p className="text-red-500 text-xs mt-1 text-center">{voiceError}</p>

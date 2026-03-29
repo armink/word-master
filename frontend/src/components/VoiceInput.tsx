@@ -121,7 +121,7 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
       } as React.CSSProperties}
       className={`w-full py-4 rounded-2xl font-bold text-base select-none transition-all
         ${pressing || recording
-          ? 'bg-red-500 text-white shadow-inner scale-[0.97]'
+          ? 'bg-primary-500 text-white shadow-inner scale-[0.97]'
           : 'bg-primary-100 text-primary-700 border-2 border-primary-200 hover:bg-primary-200'
         } disabled:opacity-40 disabled:cursor-not-allowed`}
     >

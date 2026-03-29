@@ -1,35 +1,47 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createQuizSession } from '@/api'
+import { getTodayTask, startTodaySession } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
 import { useWordbook } from '@/hooks/useWordbook'
-import type { QuizType } from '@/types'
-
-const QUIZ_TYPES: { type: QuizType; label: string; desc: string }[] = [
-  { type: 'en_to_zh', label: '英译中', desc: '看英文，写出中文含义' },
-  { type: 'zh_to_en', label: '中译英', desc: '看中文，写出英文' },
-  { type: 'spelling', label: '拼 写', desc: '看中文，键盘拼写英文（仅单词）' },
-]
+import type { TodayTask } from '@/types'
 
 export default function TasksPage() {
   const navigate = useNavigate()
   const { student } = useStudent()
   const { wordbook: selectedWb } = useWordbook()
-  const [quizType, setQuizType] = useState<QuizType>('en_to_zh')
+
+  const [task, setTask] = useState<TodayTask | null>(null)
+  const [taskLoading, setTaskLoading] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
 
+  const loadTask = () => {
+    if (!student || !selectedWb) return
+    setTaskLoading(true)
+    setError('')
+    getTodayTask(student.id, selectedWb.id)
+      .then(setTask)
+      .catch(e => {
+        const msg = (e as Error).message
+        if (msg.includes('未找到激活的学习计划')) setTask(null)
+        else setError(msg)
+      })
+      .finally(() => setTaskLoading(false))
+  }
+
+  useEffect(() => {
+    setTask(null)
+    loadTask()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student?.id, selectedWb?.id])
+
   const handleStart = async () => {
-    if (!student) {
-      setError('请先在首页选择学生')
-      return
-    }
-    if (!selectedWb) return
+    if (!student || !selectedWb) return
     setStarting(true)
     setError('')
     try {
-      const session = await createQuizSession(student.id, selectedWb.id, quizType)
-      navigate(`/quiz/${session.id}`)
+      const detail = await startTodaySession(student.id, selectedWb.id)
+      navigate(`/quiz/${detail.session.id}`)
     } catch (e) {
       setError((e as Error).message)
       setStarting(false)
@@ -56,54 +68,90 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* 选择测验阶段 */}
-      <p className="text-sm font-semibold text-gray-600 mb-2">选择测验阶段</p>
-      <div className="space-y-2 mb-6">
-        {QUIZ_TYPES.map(qt => {
-          const disabled = qt.type === 'spelling' && selectedWb?.item_count === 0
-          return (
+      {/* 任务主体 */}
+      {selectedWb && (
+        taskLoading ? (
+          <div className="text-center text-gray-400 py-16">
+            <p className="text-3xl mb-3 animate-pulse">⏳</p>
+            <p className="text-sm">加载任务中…</p>
+          </div>
+        ) : task ? (
+          <>
+            {/* 任务统计卡片 */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="bg-blue-50 rounded-2xl p-4 text-center">
+                <p className="text-3xl font-bold text-blue-600">{task.review_count}</p>
+                <p className="text-xs text-blue-500 mt-1">🔁 需要复习</p>
+              </div>
+              <div className="bg-green-50 rounded-2xl p-4 text-center">
+                <p className="text-3xl font-bold text-green-600">{task.new_count}</p>
+                <p className="text-xs text-green-500 mt-1">🆕 今日新词</p>
+              </div>
+            </div>
+
+            {(task.review_count + task.new_count) === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-5xl mb-3">🎉</p>
+                <p className="font-semibold text-gray-700 mb-1">今日任务已完成！</p>
+                <p className="text-sm text-gray-400">
+                  {task.remaining_new > 0
+                    ? `还有 ${task.remaining_new} 个新词等待学习`
+                    : '所有词条均已学完'}
+                </p>
+                {task.remaining_new > 0 && (
+                  <button
+                    onClick={() => navigate('/quiz/extra')}
+                    className="mt-4 px-6 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold"
+                  >
+                    继续学习新词
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="bg-gray-50 rounded-xl px-4 py-2 text-xs text-gray-500 mb-5 flex items-center gap-2">
+                  <span>📅 每日计划：{task.plan.daily_new} 词</span>
+                  <span>·</span>
+                  <span>剩余未学：{task.remaining_new} 词</span>
+                </div>
+
+                {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+
+                <button
+                  onClick={handleStart}
+                  disabled={starting}
+                  className="w-full bg-primary-600 text-white py-4 rounded-2xl text-lg font-bold disabled:opacity-50 active:scale-95 transition-transform"
+                >
+                  {starting ? '准备中…' : `开始今日任务（共 ${task.review_count + task.new_count} 词）`}
+                </button>
+              </>
+            )}
+          </>
+        ) : (
+          /* 无计划提示 */
+          <div className="text-center py-12">
+            <p className="text-5xl mb-4">📋</p>
+            <p className="font-semibold text-gray-700 mb-2">尚未制定学习计划</p>
+            <p className="text-sm text-gray-400 mb-6">
+              前往单词本详情页，制定艾宾浩斯学习计划，<br />系统将自动安排每日复习
+            </p>
             <button
-              key={qt.type}
-              onClick={() => !disabled && setQuizType(qt.type)}
-              disabled={disabled}
-              className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-colors ${
-                quizType === qt.type
-                  ? 'border-primary-500 bg-primary-50'
-                  : disabled
-                  ? 'border-gray-100 bg-gray-50 opacity-40 cursor-not-allowed'
-                  : 'border-gray-100 bg-white'
-              }`}
+              onClick={() => navigate(`/wordbooks/${selectedWb.id}`)}
+              className="px-6 py-3 rounded-2xl bg-primary-600 text-white font-semibold"
             >
-              <span className="font-medium text-gray-800">{qt.label}</span>
-              <span className="text-xs text-gray-400 ml-2">{qt.desc}</span>
+              去制定计划
             </button>
-          )
-        })}
-      </div>
-
-      {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
-
-      <button
-        onClick={handleStart}
-        disabled={starting || !selectedWb || selectedWb.item_count === 0}
-        className="w-full bg-primary-600 text-white py-4 rounded-2xl text-lg font-bold disabled:opacity-50 active:scale-95 transition-transform"
-      >
-        {starting
-          ? '创建中…'
-          : selectedWb && selectedWb.item_count > 0
-          ? `开始测验（${selectedWb.item_count} 个词条）`
-          : selectedWb
-          ? '单词本暂无词条'
-          : '请先选择单词本'}
-      </button>
+            {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
+          </div>
+        )
+      )}
 
       {!student && (
-        <p className="text-center text-xs text-gray-400 mt-3">
-          请先在首页选择学生
-        </p>
+        <p className="text-center text-xs text-gray-400 mt-3">请先在首页选择学生</p>
       )}
     </div>
   )
 }
+
 
 

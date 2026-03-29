@@ -2,6 +2,51 @@ import db from './client'
 
 export function initSchema() {
   db.exec(`
+    -- ── 学习计划 ──────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS study_plans (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id   INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      wordbook_id  INTEGER NOT NULL REFERENCES wordbooks(id) ON DELETE CASCADE,
+      daily_new    INTEGER NOT NULL DEFAULT 10,
+      start_date   INTEGER NOT NULL,
+      status       TEXT    NOT NULL CHECK(status IN ('active','paused','completed'))
+                           DEFAULT 'active',
+      created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(student_id, wordbook_id)
+    );
+
+    -- ── Session 内每个词条的独立测验类型 ──────────────────────────
+    CREATE TABLE IF NOT EXISTS session_items (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
+      item_id    INTEGER NOT NULL REFERENCES items(id)         ON DELETE CASCADE,
+      quiz_type  TEXT    NOT NULL CHECK(quiz_type IN ('en_to_zh','zh_to_en','spelling')),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(session_id, item_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_study_plans_student   ON study_plans(student_id);
+    CREATE INDEX IF NOT EXISTS idx_session_items_session ON session_items(session_id);
+  `)
+
+  // ── student_mastery 扩展列（幂等：列已存在则忽略）──────────────
+  const masteryNewCols: [string, string][] = [
+    ['introduced_date', 'INTEGER NOT NULL DEFAULT 0'],
+    ['en_to_zh_stage',  'INTEGER NOT NULL DEFAULT 0'],
+    ['zh_to_en_stage',  'INTEGER NOT NULL DEFAULT 0'],
+    ['spelling_stage',  'INTEGER NOT NULL DEFAULT 0'],
+    ['en_to_zh_next',   'INTEGER NOT NULL DEFAULT 0'],
+    ['zh_to_en_next',   'INTEGER NOT NULL DEFAULT 0'],
+    ['spelling_next',   'INTEGER NOT NULL DEFAULT 0'],
+  ]
+  for (const [col, def] of masteryNewCols) {
+    try {
+      db.exec(`ALTER TABLE student_mastery ADD COLUMN ${col} ${def}`)
+    } catch { /* 列已存在，忽略 */ }
+  }
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS students (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       name       TEXT    NOT NULL,

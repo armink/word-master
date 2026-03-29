@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getStudents, createStudent, getWordbooks } from '@/api'
+import { getStudents, createStudent, getWordbooks, getTodayTask } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
 import { useWordbook } from '@/hooks/useWordbook'
-import type { Student, Wordbook } from '@/types'
+import type { Student, Wordbook, TodayTask } from '@/types'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -15,11 +15,19 @@ export default function HomePage() {
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [todayTask, setTodayTask] = useState<TodayTask | null>(null)
 
   useEffect(() => {
     getStudents().then(setStudents).catch(() => {})
     getWordbooks().then(setWordbooks).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!student || !currentWb) { setTodayTask(null); return }
+    getTodayTask(student.id, currentWb.id)
+      .then(setTodayTask)
+      .catch(() => setTodayTask(null))
+  }, [student?.id, currentWb?.id])
 
   // 自动弹出选人框
   useEffect(() => {
@@ -84,7 +92,15 @@ export default function HomePage() {
         >
           <span className="text-3xl block mb-2">📝</span>
           <span className="text-base font-bold block">今日任务</span>
-          <span className="text-xs opacity-80">开始测验</span>
+          {todayTask && (todayTask.review_count + todayTask.new_count) > 0 ? (
+            <span className="text-xs opacity-90 block mt-0.5">
+              🔁{todayTask.review_count} 复习 · 🆕{todayTask.new_count} 新词
+            </span>
+          ) : todayTask ? (
+            <span className="text-xs opacity-80">已全部完成 🎉</span>
+          ) : (
+            <span className="text-xs opacity-80">开始测验</span>
+          )}
         </button>
         <button
           onClick={() => navigate('/wordbooks')}

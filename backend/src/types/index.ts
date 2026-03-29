@@ -1,6 +1,7 @@
 export type ItemType = 'word' | 'phrase'
 export type QuizType = 'en_to_zh' | 'zh_to_en' | 'spelling'
 export type QuizStatus = 'in_progress' | 'passed' | 'abandoned'
+export type PlanStatus = 'active' | 'paused' | 'completed'
 
 export interface StudentRow {
   id: number
@@ -42,6 +43,50 @@ export interface StudentMasteryRow {
   spelling_level: number | null
   last_reviewed_at: number | null
   updated_at: number
+  // 计划模式扩展
+  introduced_date: number   // YYYYMMDD, 0 = 未引入
+  en_to_zh_stage: number    // 0-5, 0 = 未解锁
+  zh_to_en_stage: number
+  spelling_stage: number
+  en_to_zh_next: number     // YYYYMMDD 下次复习, 0 = 未解锁
+  zh_to_en_next: number
+  spelling_next: number
+}
+
+export interface StudyPlanRow {
+  id: number
+  student_id: number
+  wordbook_id: number
+  daily_new: number
+  start_date: number        // YYYYMMDD
+  status: PlanStatus
+  created_at: number
+  updated_at: number
+}
+
+/** 今日任务中的单个词条（带本次测验类型） */
+export interface TodayTaskItem {
+  item_id: number
+  quiz_type: QuizType
+  is_new: boolean           // true = 今日新词, false = 到期复习
+}
+
+/** GET /api/tasks/today 响应 */
+export interface TodayTask {
+  plan: StudyPlanRow
+  review_count: number
+  new_count: number
+  remaining_new: number     // 单词本中还未引入的词数
+  items: TodayTaskItem[]    // 已按复习在前、新词在后排序
+}
+
+/** session_items 表行 */
+export interface SessionItemRow {
+  id: number
+  session_id: number
+  item_id: number
+  quiz_type: QuizType
+  sort_order: number
 }
 
 export interface QuizSessionRow {

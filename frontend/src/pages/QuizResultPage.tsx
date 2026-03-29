@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getQuizSession } from '@/api'
-import type { QuizSession } from '@/types'
+import { getQuizSession, getTodayTask, startExtraSession } from '@/api'
+import { useStudent } from '@/hooks/useStudent'
+import { useWordbook } from '@/hooks/useWordbook'
+import type { QuizSession, TodayTask } from '@/types'
 
 function formatDuration(secs: number | null) {
   if (!secs) return '—'
@@ -13,8 +15,12 @@ function formatDuration(secs: number | null) {
 export default function QuizResultPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const { student } = useStudent()
+  const { wordbook: selectedWb } = useWordbook()
   const [session, setSession] = useState<QuizSession | null>(null)
   const [loading, setLoading] = useState(true)
+  const [todayTask, setTodayTask] = useState<TodayTask | null>(null)
+  const [extraStarting, setExtraStarting] = useState(false)
 
   useEffect(() => {
     if (!sessionId) return
@@ -22,6 +28,25 @@ export default function QuizResultPage() {
       .then(s => setSession(s))
       .finally(() => setLoading(false))
   }, [sessionId])
+
+  useEffect(() => {
+    if (!student || !selectedWb) return
+    getTodayTask(student.id, selectedWb.id)
+      .then(setTodayTask)
+      .catch(() => { /* 无计划时忽略 */ })
+  }, [student?.id, selectedWb?.id])
+
+  const handleExtra = async (count: number) => {
+    if (!student || !selectedWb || extraStarting) return
+    setExtraStarting(true)
+    try {
+      const detail = await startExtraSession(student.id, selectedWb.id, count)
+      navigate(`/quiz/${detail.session.id}`)
+    } catch (e) {
+      alert((e as Error).message)
+      setExtraStarting(false)
+    }
+  }
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen text-gray-400">加载中…</div>
@@ -34,6 +59,8 @@ export default function QuizResultPage() {
   const correctCount = session.final_accuracy != null
     ? Math.round(session.final_accuracy * session.total_words)
     : 0
+
+  const remainingNew = todayTask?.remaining_new ?? 0
 
   return (
     <div className={`min-h-screen flex flex-col ${passed ? 'bg-primary-50' : 'bg-orange-50'}`}>
@@ -77,6 +104,36 @@ export default function QuizResultPage() {
           </div>
         </div>
 
+        {/* 继续学习新词（有学习计划且有剩余新词时显示） */}
+        {remainingNew > 0 && (
+          <div className="w-full bg-white rounded-2xl p-4 shadow-sm mb-4 border border-primary-100">
+            <p className="text-sm font-semibold text-gray-700 mb-3">
+              🆕 还有 <span className="text-primary-600">{remainingNew}</span> 个新词等待学习
+            </p>
+            <div className="flex gap-2">
+              {[5, 10].filter(n => n <= remainingNew).map(count => (
+                <button
+                  key={count}
+                  onClick={() => handleExtra(count)}
+                  disabled={extraStarting}
+                  className="flex-1 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold disabled:opacity-50"
+                >
+                  {extraStarting ? '准备中…' : `继续 +${count} 词`}
+                </button>
+              ))}
+              {remainingNew > 0 && remainingNew < 5 && (
+                <button
+                  onClick={() => handleExtra(remainingNew)}
+                  disabled={extraStarting}
+                  className="flex-1 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold disabled:opacity-50"
+                >
+                  {extraStarting ? '准备中…' : `全部 +${remainingNew} 词`}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* 操作按钮 */}
         <div className="w-full space-y-3">
           <button
@@ -102,5 +159,6 @@ export default function QuizResultPage() {
     </div>
   )
 }
+
 
 

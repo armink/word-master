@@ -2,6 +2,7 @@ import type {
   Student, Wordbook, WordbookDetail,
   QuizSessionDetail, QuizAnswer, QuizFinishResult,
   ItemWithMastery, QuizType,
+  StudyPlan, TodayTask, PlanSessionDetail,
 } from '@/types'
 
 const BASE = '/api'
@@ -88,4 +89,38 @@ export const checkSemantic = (standard: string, answer: string) =>
   request<{ match: boolean; score: number; method: string }>('/semantic/check', {
     method: 'POST',
     body: JSON.stringify({ standard, answer }),
+  })
+
+// ── 学习计划 ──────────────────────────────────────────────────────
+
+export const getPlan = (student_id: number, wordbook_id: number) =>
+  request<StudyPlan>(`/plans?student_id=${student_id}&wordbook_id=${wordbook_id}`)
+
+export const createPlan = (student_id: number, wordbook_id: number, daily_new: number) =>
+  request<StudyPlan>('/plans', {
+    method: 'POST',
+    body: JSON.stringify({ student_id, wordbook_id, daily_new }),
+  })
+
+export const patchPlan = (id: number, data: { daily_new?: number; status?: string }) =>
+  request<StudyPlan>(`/plans/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+
+// ── 今日任务 ──────────────────────────────────────────────────────
+
+export const getTodayTask = (student_id: number, wordbook_id: number) =>
+  request<TodayTask>(`/tasks/today?student_id=${student_id}&wordbook_id=${wordbook_id}`)
+
+export const startTodaySession = (student_id: number, wordbook_id: number) =>
+  request<PlanSessionDetail>('/tasks/start', {
+    method: 'POST',
+    body: JSON.stringify({ student_id, wordbook_id }),
+  })
+
+export const startExtraSession = (student_id: number, wordbook_id: number, extra_count: number) =>
+  request<PlanSessionDetail>('/tasks/extra', {
+    method: 'POST',
+    body: JSON.stringify({ student_id, wordbook_id, extra_count }),
   })

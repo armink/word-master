@@ -23,8 +23,8 @@ async function checkAnswer(item: Item, quizType: QuizType, answer: string): Prom
 }
 
 function quizTypeLabel(t: QuizType) {
-  if (t === 'en_to_zh') return '英译中'
-  if (t === 'zh_to_en') return '中译英'
+  if (t === 'en_to_zh') return '英→中'
+  if (t === 'zh_to_en') return '中→英'
   return '拼写'
 }
 
@@ -65,7 +65,9 @@ export default function QuizPage() {
     }).catch(() => navigate('/tasks'))
   }, [sessionId, navigate])
 
-  const currentItem = queue[0]
+  const currentItem = queue[0] as (Item & { item_quiz_type?: QuizType }) | undefined
+  // 计划模式：每张卡可能有独立 quiz_type；否则使用 session 级别的
+  const currentQuizType: QuizType = currentItem?.item_quiz_type ?? session?.quiz_type ?? 'en_to_zh'
   const totalItems = session?.total_words ?? 0
   const answeredCount = totalItems - queue.length
   const progress = totalItems > 0 ? (answeredCount / totalItems) : 0
@@ -73,10 +75,10 @@ export default function QuizPage() {
 
   // spelling 模式切题后自动 focus
   useEffect(() => {
-    if (cardState === 'answering' && session?.quiz_type === 'spelling') {
+    if (cardState === 'answering' && currentQuizType === 'spelling') {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [cardState, currentItem, session?.quiz_type])
+  }, [cardState, currentItem, currentQuizType])
 
   const doFinish = useCallback(async () => {
     if (finishing) return
@@ -109,7 +111,7 @@ export default function QuizPage() {
 
     const durationMs = Date.now() - cardStartTime
     setIsChecking(true)
-    const correct = await checkAnswer(currentItem, session.quiz_type, answer)
+    const correct = await checkAnswer(currentItem, currentQuizType, answer)
     setIsChecking(false)
     setCardState(correct ? 'correct' : 'wrong')
     if (correct) playCorrect(); else playWrong()
@@ -128,7 +130,7 @@ export default function QuizPage() {
     } catch { /* ignore */ }
 
     // 答对/答错均等用户手动点继续
-  }, [session, currentItem, cardState, userAnswer, cardStartTime, isFirstAttempt, sessionId, advanceQueue])
+  }, [session, currentItem, currentQuizType, cardState, userAnswer, cardStartTime, isFirstAttempt, sessionId, advanceQueue])
 
   if (!session || (queue.length === 0 && !finishing)) {
     return <div className="flex items-center justify-center h-screen text-gray-400">加载中…</div>
@@ -138,7 +140,7 @@ export default function QuizPage() {
   const isAnswering = cardState === 'answering'
   const isCorrect = cardState === 'correct'
   const isWrong = cardState === 'wrong'
-  const correctAnswer = session.quiz_type === 'en_to_zh' ? currentItem.chinese : currentItem.english
+  const correctAnswer = currentQuizType === 'en_to_zh' ? currentItem.chinese : currentItem.english
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -158,7 +160,7 @@ export default function QuizPage() {
       {/* 阶段标签 */}
       <div className="px-4 mb-3">
         <span className="text-xs bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">
-          {quizTypeLabel(session.quiz_type)}
+          {quizTypeLabel(currentQuizType)}
         </span>
       </div>
 
@@ -171,8 +173,8 @@ export default function QuizPage() {
 
             {/* 题目提示文字 */}
             <p className="text-xs text-gray-400 mb-2">
-              {session.quiz_type === 'en_to_zh' ? '这个英文的中文是？'
-               : session.quiz_type === 'zh_to_en' ? '这个中文的英文怎么说？'
+              {currentQuizType === 'en_to_zh' ? '这个英文的中文是？'
+               : currentQuizType === 'zh_to_en' ? '这个中文的英文怎么说？'
                : '请拼写这个单词'}
             </p>
 
@@ -181,13 +183,13 @@ export default function QuizPage() {
               <p className="flex-1 text-3xl font-bold text-gray-800 leading-tight">
                 {quizPrompt(currentItem, session.quiz_type)}
               </p>
-              {session.quiz_type === 'en_to_zh' && (
+              {currentQuizType === 'en_to_zh' && (
                 <TtsButton text={currentItem.english} className="w-10 h-10 shrink-0 mt-1" />
               )}
             </div>
 
             {/* 音标 */}
-            {currentItem.phonetic && session.quiz_type === 'en_to_zh' && (
+            {currentItem.phonetic && currentQuizType === 'en_to_zh' && (
               <p className="text-sm text-gray-400 mb-3">[{currentItem.phonetic}]</p>
             )}
 
@@ -226,7 +228,7 @@ export default function QuizPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-red-700 font-semibold text-sm">❌ 正确答案：</p>
                         <p className="text-red-800 font-bold">{correctAnswer}</p>
-                        {session.quiz_type !== 'en_to_zh' && (
+                        {currentQuizType !== 'en_to_zh' && (
                           <TtsButton text={currentItem.english} className="w-6 h-6 shrink-0" />
                         )}
                       </div>
@@ -251,7 +253,7 @@ export default function QuizPage() {
               value={userAnswer}
               onChange={e => isAnswering && setUserAnswer(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && isAnswering && userAnswer.trim() && handleSubmit()}
-              placeholder={isAnswering ? quizPlaceholder(session.quiz_type) : ''}
+              placeholder={isAnswering ? quizPlaceholder(currentQuizType) : ''}
               disabled={!isAnswering}
               className={`w-full border-2 rounded-2xl px-4 py-3 text-lg outline-none transition-colors
                 ${isAnswering
@@ -266,9 +268,9 @@ export default function QuizPage() {
             <div className="mt-3">
               {isAnswering ? (
                 <>
-                  {session.quiz_type !== 'spelling' && (
+                  {currentQuizType !== 'spelling' && (
                     <VoiceInput
-                      lang={session.quiz_type === 'en_to_zh' ? 'zh_cn' : 'en_us'}
+                      lang={currentQuizType === 'en_to_zh' ? 'zh_cn' : 'en_us'}
                       onResult={text => {
                         setUserAnswer(text)
                         setVoiceError('')
@@ -284,7 +286,7 @@ export default function QuizPage() {
                   {isChecking && (
                     <p className="text-center text-sm text-gray-400 mt-2 animate-pulse">判断中…</p>
                   )}
-                  {session.quiz_type === 'spelling' && !isChecking && (
+                  {currentQuizType === 'spelling' && !isChecking && (
                     <p className="text-center text-xs text-gray-300 mt-2">输入后按回车提交</p>
                   )}
                 </>

@@ -9,12 +9,14 @@ import recordsRouter from './routes/records'
 import ttsRouter from './routes/tts'
 import sttRouter from './routes/stt'
 import semanticRouter from './routes/semantic'
+import plansRouter from './routes/plans'
+import tasksRouter from './routes/tasks'
 import { warmupSemantic } from './services/semantic'
 
 dotenv.config()
 
 const app = express()
-const PORT = process.env.PORT ?? 3000
+const PORT = Number(process.env.PORT ?? 3000)
 
 app.use(cors({
   // 允许 localhost 和局域网任意 IP 访问（手机通过局域网 IP 访问前端时，
@@ -45,6 +47,8 @@ app.use('/api/records', recordsRouter)
 app.use('/api/tts', ttsRouter)
 app.use('/api/stt', sttRouter)
 app.use('/api/semantic', semanticRouter)
+app.use('/api/plans', plansRouter)
+app.use('/api/tasks', tasksRouter)
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`后端服务运行在 http://0.0.0.0:${PORT}`)

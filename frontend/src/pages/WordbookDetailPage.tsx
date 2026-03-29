@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getWordbookDetail, importWords } from '@/api'
+import { getWordbookDetail, importWords, getPlan, createPlan, patchPlan } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
-import type { WordbookDetail, Item } from '@/types'
+import type { WordbookDetail, Item, StudyPlan } from '@/types'
 
 export default function WordbookDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -16,6 +16,13 @@ export default function WordbookDetailPage() {
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
   const [error, setError] = useState('')
 
+  // ── 学习计划 ─────────────────────────────────────────
+  const [plan, setPlan] = useState<StudyPlan | null | undefined>(undefined)  // undefined=加载中
+  const [showPlanSheet, setShowPlanSheet] = useState(false)
+  const [dailyNew, setDailyNew] = useState(10)
+  const [planSaving, setPlanSaving] = useState(false)
+  const [planError, setPlanError] = useState('')
+
   useEffect(() => {
     if (!id) return
     getWordbookDetail(Number(id))
@@ -23,6 +30,13 @@ export default function WordbookDetailPage() {
       .catch(() => navigate('/wordbooks'))
       .finally(() => setLoading(false))
   }, [id, navigate])
+
+  useEffect(() => {
+    if (!id || !student) return
+    getPlan(student.id, Number(id))
+      .then(p => { setPlan(p); setDailyNew(p.daily_new) })
+      .catch(() => setPlan(null))
+  }, [id, student])
 
   const handleImport = async () => {
     if (!importText.trim() || !id) return
@@ -32,7 +46,6 @@ export default function WordbookDetailPage() {
     try {
       const result = await importWords(Number(id), importText.trim())
       setImportResult(result)
-      // 刷新词条列表
       const wb = await getWordbookDetail(Number(id))
       setWordbook(wb)
     } catch (e) {
@@ -42,9 +55,28 @@ export default function WordbookDetailPage() {
     }
   }
 
+  const handleSavePlan = async () => {
+    if (!id || !student) return
+    setPlanSaving(true)
+    setPlanError('')
+    try {
+      if (plan) {
+        const updated = await patchPlan(plan.id, { daily_new: dailyNew, status: 'active' })
+        setPlan(updated)
+      } else {
+        const created = await createPlan(student.id, Number(id), dailyNew)
+        setPlan(created)
+      }
+      setShowPlanSheet(false)
+    } catch (e) {
+      setPlanError((e as Error).message)
+    } finally {
+      setPlanSaving(false)
+    }
+  }
+
   const getMasteryColor = (item: Item) => {
-    // 暂无掌握度数据时用灰色
-    void student  // 后续连接掌握度
+    void student
     void item
     return 'text-gray-300'
   }
@@ -52,8 +84,11 @@ export default function WordbookDetailPage() {
   if (loading) return <div className="p-4 text-center text-gray-400 pt-16">加载中…</div>
   if (!wordbook) return null
 
+  const totalItems = wordbook.items.length
+  const estimateDays = dailyNew > 0 ? Math.ceil(totalItems / dailyNew) : '–'
+
   return (
-    <div className="p-4">
+    <div className="p-4 pb-32">
       <div className="flex items-center gap-3 pt-4 mb-4">
         <button onClick={() => navigate('/wordbooks')} className="text-gray-500 text-xl">←</button>
         <div className="flex-1 min-w-0">
@@ -94,6 +129,75 @@ export default function WordbookDetailPage() {
               <span className={`text-lg ${getMasteryColor(item)}`}>●</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 学习计划悬浮按钮 */}
+      {wordbook.items.length > 0 && (
+        <div className="fixed bottom-24 left-0 right-0 px-4 z-40">
+          <button
+            onClick={() => { setShowPlanSheet(true); setPlanError('') }}
+            className="w-full py-3 rounded-2xl font-semibold shadow-lg text-sm
+              bg-primary-600 text-white active:opacity-80"
+          >
+            {plan
+              ? `📅 学习计划：每天 ${plan.daily_new} 词（点击修改）`
+              : '制定学习计划'}
+          </button>
+        </div>
+      )}
+
+      {/* 制定/修改计划 Sheet */}
+      {showPlanSheet && (
+        <div className="fixed inset-0 bg-black/40 flex items-end z-50">
+          <div className="bg-white w-full rounded-t-3xl p-6 pb-10">
+            <h2 className="text-lg font-bold mb-4">
+              {plan ? '修改学习计划' : '制定学习计划'}
+            </h2>
+
+            <div className="mb-4">
+              <label className="block text-sm text-gray-600 mb-2">
+                每日新词数
+                <span className="ml-2 text-2xl font-bold text-primary-600">{dailyNew}</span>
+                <span className="text-xs text-gray-400 ml-1">词</span>
+              </label>
+              <input
+                type="range"
+                min={1}
+                max={Math.min(50, totalItems)}
+                value={dailyNew}
+                onChange={e => setDailyNew(Number(e.target.value))}
+                className="w-full accent-primary-600"
+              />
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <span>1</span>
+                <span>{Math.min(50, totalItems)}</span>
+              </div>
+            </div>
+
+            <div className="bg-primary-50 rounded-xl p-3 mb-5 text-sm text-primary-700">
+              共 <span className="font-bold">{totalItems}</span> 个词条，
+              预计大约 <span className="font-bold">{estimateDays}</span> 天完成
+            </div>
+
+            {planError && <p className="text-red-500 text-xs mb-3">{planError}</p>}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPlanSheet(false)}
+                className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSavePlan}
+                disabled={planSaving}
+                className="flex-1 bg-primary-600 text-white py-2.5 rounded-xl disabled:opacity-50"
+              >
+                {planSaving ? '保存中…' : (plan ? '保存修改' : '开始计划')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -141,5 +245,6 @@ export default function WordbookDetailPage() {
     </div>
   )
 }
+
 
 

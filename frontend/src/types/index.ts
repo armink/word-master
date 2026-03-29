@@ -51,7 +51,7 @@ export interface QuizSession {
 }
 
 export interface QuizSessionDetail extends QuizSession {
-  items: Item[]
+  items: (Item & { item_quiz_type?: QuizType; sort_order?: number })[]
 }
 
 export interface QuizAnswer {
@@ -81,4 +81,38 @@ export interface ItemWithMastery extends Item {
   zh_to_en_level: number
   spelling_level: number | null
   last_reviewed_at: number | null
+}
+
+// ── 艾宾浩斯学习计划 ─────────────────────────────────────────────
+
+export type PlanStatus = 'active' | 'paused' | 'completed'
+
+export interface StudyPlan {
+  id: number
+  student_id: number
+  wordbook_id: number
+  daily_new: number
+  start_date: number
+  status: PlanStatus
+  created_at: number
+  updated_at: number
+}
+
+export interface TodayTaskItem {
+  item_id: number
+  quiz_type: QuizType
+  is_new: boolean
+}
+
+export interface TodayTask {
+  plan: StudyPlan
+  review_count: number
+  new_count: number
+  remaining_new: number
+  items: TodayTaskItem[]
+}
+
+export interface PlanSessionDetail {
+  session: QuizSession
+  items: (Item & { item_quiz_type: QuizType; sort_order: number })[]
 }

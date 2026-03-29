@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import db from '../db/client'
 import type { QuizSessionRow, QuizAnswerRow } from '../types/index'
+import { nextReviewDate, todayInt } from './tasks'
 
 const router = Router()
 
@@ -61,6 +62,21 @@ router.get('/sessions/:id', (req, res) => {
   const session = db.prepare('SELECT * FROM quiz_sessions WHERE id = ?').get(req.params.id) as QuizSessionRow | undefined
   if (!session) { res.status(404).json({ error: '会话不存在' }); return }
 
+  // 计划模式：优先使用 session_items（含 per-item quiz_type 和排序）
+  const sessionItems = db.prepare(`
+    SELECT i.*, si.quiz_type AS item_quiz_type, si.sort_order
+    FROM session_items si
+    JOIN items i ON i.id = si.item_id
+    WHERE si.session_id = ?
+    ORDER BY si.sort_order ASC
+  `).all(req.params.id) as unknown[]
+
+  if ((sessionItems as unknown[]).length > 0) {
+    res.json({ ...session, items: sessionItems })
+    return
+  }
+
+  // 兼容旧模式：从单词本取词
   const items = session.quiz_type === 'spelling'
     ? db.prepare(`
         SELECT i.*, wi.sort_order
@@ -165,6 +181,15 @@ router.post('/sessions/:id/finish', (req, res) => {
       )
   `).all(req.params.id) as { item_id: number; is_correct: 0 | 1 }[]
 
+  // 计划模式：per-item quiz_type 映射
+  const itemQtMap = new Map(
+    (db.prepare('SELECT item_id, quiz_type FROM session_items WHERE session_id = ?')
+      .all(req.params.id) as { item_id: number; quiz_type: string }[])
+      .map(r => [r.item_id, r.quiz_type])
+  )
+  const isPlanMode = itemQtMap.size > 0
+  const today = todayInt()
+
   db.transaction(() => {
     for (const { item_id, is_correct } of lastAttempts) {
       const item = db.prepare('SELECT type FROM items WHERE id = ?').get(item_id) as { type: string }
@@ -197,6 +222,55 @@ router.post('/sessions/:id/finish', (req, res) => {
               last_reviewed_at = ?, updated_at = ?
           WHERE student_id = ? AND item_id = ?
         `).run(delta, now, now, session.student_id, item_id)
+      }
+
+      // ── 计划模式：更新艾宾浩斯 stage / next ───────────────────────
+      if (isPlanMode) {
+        const qt = itemQtMap.get(item_id) ?? session.quiz_type
+        type MasteryStages = { en_to_zh_stage: number; zh_to_en_stage: number; spelling_stage: number }
+        const m = db.prepare(
+          'SELECT en_to_zh_stage, zh_to_en_stage, spelling_stage FROM student_mastery WHERE student_id=? AND item_id=?'
+        ).get(session.student_id, item_id) as MasteryStages | undefined
+
+        if (m) {
+          if (qt === 'en_to_zh') {
+            // 新词（stage=0）：答对 → stage 1；答错 → 也定为 stage 1（已引入，当日重练）
+            const newStage = is_correct
+              ? Math.min(5, m.en_to_zh_stage + 1)
+              : Math.max(1, m.en_to_zh_stage)
+            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            db.prepare(`
+              UPDATE student_mastery
+              SET introduced_date = CASE WHEN introduced_date = 0 THEN ? ELSE introduced_date END,
+                  en_to_zh_stage = ?, en_to_zh_next = ?, last_reviewed_at = ?, updated_at = ?
+              WHERE student_id = ? AND item_id = ?
+            `).run(today, newStage, nextDate, now, now, session.student_id, item_id)
+            // 解锁 zh_to_en（en_to_zh_stage 首次达到 2）
+            if (newStage >= 2 && m.zh_to_en_stage === 0) {
+              db.prepare(
+                'UPDATE student_mastery SET zh_to_en_stage=1, zh_to_en_next=?, updated_at=? WHERE student_id=? AND item_id=?'
+              ).run(today, now, session.student_id, item_id)
+            }
+          } else if (qt === 'zh_to_en') {
+            const newStage = is_correct ? Math.min(5, m.zh_to_en_stage + 1) : m.zh_to_en_stage
+            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            db.prepare(
+              'UPDATE student_mastery SET zh_to_en_stage=?, zh_to_en_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
+            ).run(newStage, nextDate, now, now, session.student_id, item_id)
+            // 解锁 spelling（zh_to_en_stage 首次达到 2，仅单词）
+            if (newStage >= 2 && m.spelling_stage === 0 && item.type === 'word') {
+              db.prepare(
+                'UPDATE student_mastery SET spelling_stage=1, spelling_next=?, updated_at=? WHERE student_id=? AND item_id=?'
+              ).run(today, now, session.student_id, item_id)
+            }
+          } else if (qt === 'spelling' && item.type === 'word') {
+            const newStage = is_correct ? Math.min(5, m.spelling_stage + 1) : m.spelling_stage
+            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            db.prepare(
+              'UPDATE student_mastery SET spelling_stage=?, spelling_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
+            ).run(newStage, nextDate, now, now, session.student_id, item_id)
+          }
+        }
       }
     }
   })()

@@ -1,8 +1,8 @@
 import { buildAuthUrl } from './auth'
 
-const APP_ID = process.env.XUNFEI_APP_ID!
-
 export async function synthesize(text: string, vcn = 'xiaoyan'): Promise<Buffer> {
+  // 在函数调用时读取，确保 dotenv.config() 已执行
+  const APP_ID = process.env.XUNFEI_APP_ID!
   const url = buildAuthUrl('tts-api.xfyun.cn', '/v2/tts')
   const body = {
     common: { app_id: APP_ID },

@@ -1,0 +1,27 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+
+# 环境变量（含密钥，不提交）
+.env
+.env.local
+.env.*.local
+
+# 数据库文件（本地数据，不提交）
+*.db
+*.sqlite
+
+# 编辑器
+.vscode/settings.json
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*

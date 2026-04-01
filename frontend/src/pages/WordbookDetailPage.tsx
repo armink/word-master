@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getWordbookDetail, importWords, getPlan, createPlan, patchPlan } from '@/api'
+import { getWordbookDetail, importWords, exportWordbook, getPlan, createPlan, patchPlan } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
 import type { WordbookDetail, Item, StudyPlan } from '@/types'
 
@@ -82,6 +82,22 @@ export default function WordbookDetailPage() {
     return 'text-gray-300'
   }
 
+  const handleExport = async () => {
+    if (!id || !wordbook) return
+    try {
+      const text = await exportWordbook(Number(id))
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${wordbook.name}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert((e as Error).message)
+    }
+  }
+
   if (loading) return <div className="p-4 text-center text-gray-400 pt-16">加载中…</div>
   if (!wordbook) return null
 
@@ -110,6 +126,12 @@ export default function WordbookDetailPage() {
           className="text-sm text-primary-600 border border-primary-300 rounded-full px-3 py-1"
         >
           导入
+        </button>
+        <button
+          onClick={handleExport}
+          className="text-sm text-gray-600 border border-gray-300 rounded-full px-3 py-1"
+        >
+          导出
         </button>
       </div>
 

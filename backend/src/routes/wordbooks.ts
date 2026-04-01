@@ -58,6 +58,26 @@ router.delete('/:id', (req, res) => {
   res.status(204).send()
 })
 
+// GET /api/wordbooks/:id/export
+// 返回与导入格式相同的纯文本：每行 english:chinese
+router.get('/:id/export', (req, res) => {
+  const wordbook = db.prepare('SELECT * FROM wordbooks WHERE id = ?').get(req.params.id) as WordbookRow | undefined
+  if (!wordbook) {
+    res.status(404).json({ error: '单词本不存在' })
+    return
+  }
+  const items = db.prepare(`
+    SELECT i.english, i.chinese
+    FROM items i
+    JOIN wordbook_items wi ON wi.item_id = i.id
+    WHERE wi.wordbook_id = ?
+    ORDER BY wi.sort_order ASC, i.id ASC
+  `).all(req.params.id) as { english: string; chinese: string }[]
+  const text = items.map(it => `${it.english}:${it.chinese}`).join('\n')
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  res.send(text)
+})
+
 // POST /api/wordbooks/:id/import
 // Body: { text: "apple:苹果\nbanana:香蕉" }  or  "apple:苹果;banana:香蕉"
 router.post('/:id/import', (req, res) => {

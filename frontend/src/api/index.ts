@@ -48,6 +48,15 @@ export const importWords = (id: number, text: string) =>
     { method: 'POST', body: JSON.stringify({ text }) }
   )
 
+export const exportWordbook = async (id: number): Promise<string> => {
+  const res = await fetch(`${BASE}/wordbooks/${id}/export`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`)
+  }
+  return res.text()
+}
+
 // ---- Quiz ----
 export const createQuizSession = (
   student_id: number,

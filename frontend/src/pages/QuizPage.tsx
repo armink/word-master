@@ -8,6 +8,38 @@ import { playCorrect, playWrong } from '@/utils/sound'
 
 type CardState = 'answering' | 'correct' | 'wrong'
 
+/**
+ * 匹配含斜杠备选的英文答案，如 "be/get familiar with"。
+ * 支持：
+ *   1. 直接写任意一个变体：be familiar with / get familiar with
+ *   2. 用户写出全部备选词（be get familiar with）且无多余词，也视为正确
+ */
+function matchEnglishAnswer(standard: string, userAnswer: string): boolean {
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+  const ua = norm(userAnswer)
+  const std = norm(standard)
+  if (ua === std) return true
+
+  const tokens = std.split(' ')
+  if (!tokens.some(t => t.includes('/'))) return false
+
+  // 展开所有斜杠备选组合
+  let variants: string[] = ['']
+  for (const token of tokens) {
+    const parts = token.split('/')
+    variants = variants.flatMap(v => parts.map(p => v ? `${v} ${p}` : p))
+  }
+  if (variants.some(v => v === ua)) return true
+
+  // 容错：用户写出了多个备选词（如 "be get familiar with"）
+  // 条件：所有用户词都在标准词集内，且每个 slash 组至少一个选项被覆盖
+  const userTokens = ua.split(' ')
+  const allStdWords = new Set(tokens.flatMap(t => t.split('/')))
+  if (!userTokens.every(w => allStdWords.has(w))) return false
+  const userSet = new Set(userTokens)
+  return tokens.every(token => token.split('/').some(p => userSet.has(p)))
+}
+
 async function checkAnswer(item: Item, quizType: QuizType, answer: string): Promise<boolean> {
   const a = answer.trim()
   if (!a) return false
@@ -19,7 +51,7 @@ async function checkAnswer(item: Item, quizType: QuizType, answer: string): Prom
       return a.toLowerCase() === item.chinese.trim().toLowerCase()
     }
   }
-  return a.toLowerCase() === item.english.trim().toLowerCase()
+  return matchEnglishAnswer(item.english, a)
 }
 
 function quizTypeLabel(t: QuizType) {

@@ -63,15 +63,26 @@ router.get('/sessions/:id', (req, res) => {
   if (!session) { res.status(404).json({ error: '会话不存在' }); return }
 
   // 计划模式：优先使用 session_items（含 per-item quiz_type 和排序）
-  const sessionItems = db.prepare(`
+  let sessionItems = db.prepare(`
     SELECT i.*, si.quiz_type AS item_quiz_type, si.sort_order
     FROM session_items si
     JOIN items i ON i.id = si.item_id
     WHERE si.session_id = ?
     ORDER BY si.sort_order ASC
-  `).all(req.params.id) as unknown[]
+  `).all(req.params.id) as any[]
 
-  if ((sessionItems as unknown[]).length > 0) {
+  if (sessionItems.length > 0) {
+    // in_progress session：过滤已答对的词，使 queue 与 total_words 一致
+    if (session.status === 'in_progress') {
+      const correctIds = new Set(
+        (db.prepare(
+          'SELECT DISTINCT item_id FROM quiz_answers WHERE session_id = ? AND is_correct = 1'
+        ).all(req.params.id) as { item_id: number }[]).map(r => r.item_id)
+      )
+      if (correctIds.size > 0) {
+        sessionItems = sessionItems.filter(item => !correctIds.has(item.id))
+      }
+    }
     res.json({ ...session, items: sessionItems })
     return
   }
@@ -245,11 +256,11 @@ router.post('/sessions/:id/finish', (req, res) => {
                   en_to_zh_stage = ?, en_to_zh_next = ?, last_reviewed_at = ?, updated_at = ?
               WHERE student_id = ? AND item_id = ?
             `).run(today, newStage, nextDate, now, now, session.student_id, item_id)
-            // 解锁 zh_to_en（en_to_zh_stage 首次达到 2）
+            // 解锁 zh_to_en（en_to_zh_stage 首次达到 2）→ 明天开始，不占今日计数
             if (newStage >= 2 && m.zh_to_en_stage === 0) {
               db.prepare(
                 'UPDATE student_mastery SET zh_to_en_stage=1, zh_to_en_next=?, updated_at=? WHERE student_id=? AND item_id=?'
-              ).run(today, now, session.student_id, item_id)
+              ).run(nextReviewDate(1), now, session.student_id, item_id)
             }
           } else if (qt === 'zh_to_en') {
             const newStage = is_correct ? Math.min(5, m.zh_to_en_stage + 1) : m.zh_to_en_stage
@@ -257,11 +268,11 @@ router.post('/sessions/:id/finish', (req, res) => {
             db.prepare(
               'UPDATE student_mastery SET zh_to_en_stage=?, zh_to_en_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
             ).run(newStage, nextDate, now, now, session.student_id, item_id)
-            // 解锁 spelling（zh_to_en_stage 首次达到 2，仅单词）
+            // 解锁 spelling（zh_to_en_stage 首次达到 2，仅单词）→ 明天开始
             if (newStage >= 2 && m.spelling_stage === 0 && item.type === 'word') {
               db.prepare(
                 'UPDATE student_mastery SET spelling_stage=1, spelling_next=?, updated_at=? WHERE student_id=? AND item_id=?'
-              ).run(today, now, session.student_id, item_id)
+              ).run(nextReviewDate(1), now, session.student_id, item_id)
             }
           } else if (qt === 'spelling' && item.type === 'word') {
             const newStage = is_correct ? Math.min(5, m.spelling_stage + 1) : m.spelling_stage

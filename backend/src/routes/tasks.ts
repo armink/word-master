@@ -46,7 +46,7 @@ function pickQuizType(m: {
 }
 
 /** 构建今日可测词列表（不含 session 创建） */
-function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanRow): TodayTaskItem[] {
+function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanRow): { items: TodayTaskItem[]; in_progress_answered: number } {
   const today = todayInt()
 
   // ── 1. 到期复习词 ───────────────────────────────────────────────
@@ -67,12 +67,24 @@ function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanR
     ORDER BY wi.sort_order ASC, i.id ASC
   `).all(wordbookId, studentId, today, today, today) as any[]
 
+  // 排除在进行中 session 里已答对的词（用户强退时 finishSession 未调用，此处前置过滤）
+  const correctInProgress = new Set(
+    (db.prepare(`
+      SELECT DISTINCT qa.item_id
+      FROM quiz_answers qa
+      JOIN quiz_sessions qs ON qs.id = qa.session_id
+      WHERE qs.student_id = ? AND qs.wordbook_id = ? AND qs.status = 'in_progress'
+        AND qa.is_correct = 1
+    `).all(studentId, wordbookId) as { item_id: number }[]).map(r => r.item_id)
+  )
+
   const reviewItems: TodayTaskItem[] = reviewRows
     .map(row => {
       const qt = pickQuizType(row, today)
       return qt ? { item_id: row.item_id, quiz_type: qt, is_new: false } : null
     })
-    .filter(Boolean) as TodayTaskItem[]
+    .filter(Boolean)
+    .filter(item => !correctInProgress.has((item as TodayTaskItem).item_id)) as TodayTaskItem[]
 
   // ── 2. 今日新词 ─────────────────────────────────────────────────
   const newRows = db.prepare(`
@@ -88,13 +100,15 @@ function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanR
     LIMIT ?
   `).all(wordbookId, studentId, plan.daily_new) as { item_id: number }[]
 
-  const newItems: TodayTaskItem[] = newRows.map(r => ({
-    item_id: r.item_id,
-    quiz_type: 'en_to_zh' as QuizType,
-    is_new: true,
-  }))
+  const newItems: TodayTaskItem[] = newRows
+    .filter(r => !correctInProgress.has(r.item_id))
+    .map(r => ({
+      item_id: r.item_id,
+      quiz_type: 'en_to_zh' as QuizType,
+      is_new: true,
+    }))
 
-  return [...reviewItems, ...newItems]
+  return { items: [...reviewItems, ...newItems], in_progress_answered: correctInProgress.size }
 }
 
 // ── GET /api/tasks/today ──────────────────────────────────────────
@@ -110,7 +124,7 @@ router.get('/today', (req, res) => {
   ).get(sid, wid) as StudyPlanRow | undefined
   if (!plan) { res.status(404).json({ error: '未找到激活的学习计划' }); return }
 
-  const items = buildTodayItems(sid, wid, plan)
+  const { items, in_progress_answered } = buildTodayItems(sid, wid, plan)
   const reviewCount = items.filter(i => !i.is_new).length
   const newCount = items.filter(i => i.is_new).length
 
@@ -128,6 +142,7 @@ router.get('/today', (req, res) => {
     review_count: reviewCount,
     new_count: newCount,
     remaining_new: Math.max(0, remaining),
+    in_progress_answered,
     items,
   }
   res.json(result)
@@ -157,22 +172,92 @@ router.post('/start', (req, res) => {
   `).get(sid, wid) as QuizSessionRow | undefined
   if (existingSession) {
     if (existingSession.started_at >= plan.updated_at) {
-      // 计划未变更，直接复用旧 session
-      const items = db.prepare(`
+      // 计划未变更，复用旧 session
+      // 找出已答对的词：更新掌握度（补偿强退未调 finishSession 的情况），并从队列中排除
+      const correctAnswers = db.prepare(`
+        SELECT DISTINCT qa.item_id, si.quiz_type
+        FROM quiz_answers qa
+        JOIN session_items si ON si.session_id = qa.session_id AND si.item_id = qa.item_id
+        WHERE qa.session_id = ? AND qa.is_correct = 1
+      `).all(existingSession.id) as { item_id: number; quiz_type: string }[]
+      const correctSet = new Set(correctAnswers.map(r => r.item_id))
+
+      if (correctSet.size > 0) {
+        const now = Math.floor(Date.now() / 1000)
+        const today = todayInt()
+        type MRow = { en_to_zh_stage: number; zh_to_en_stage: number; spelling_stage: number }
+        db.transaction(() => {
+          for (const { item_id, quiz_type } of correctAnswers) {
+            const item = db.prepare('SELECT type FROM items WHERE id = ?').get(item_id) as { type: string }
+            db.prepare('INSERT OR IGNORE INTO student_mastery (student_id, item_id, spelling_level) VALUES (?, ?, ?)')
+              .run(existingSession.student_id, item_id, item.type === 'phrase' ? null : 0)
+            const m = db.prepare(
+              'SELECT en_to_zh_stage, zh_to_en_stage, spelling_stage FROM student_mastery WHERE student_id=? AND item_id=?'
+            ).get(existingSession.student_id, item_id) as MRow | undefined
+            if (!m) continue
+
+            if (quiz_type === 'en_to_zh') {
+              const ns = Math.min(5, m.en_to_zh_stage + 1)
+              db.prepare(`
+                UPDATE student_mastery
+                SET introduced_date = CASE WHEN introduced_date = 0 THEN ? ELSE introduced_date END,
+                    en_to_zh_stage = ?, en_to_zh_next = ?,
+                    en_to_zh_level = MIN(100, en_to_zh_level + 10),
+                    last_reviewed_at = ?, updated_at = ?
+                WHERE student_id = ? AND item_id = ?
+              `).run(today, ns, nextReviewDate(ns), now, now, existingSession.student_id, item_id)
+              if (ns >= 2 && m.zh_to_en_stage === 0) {
+                db.prepare('UPDATE student_mastery SET zh_to_en_stage=1, zh_to_en_next=?, updated_at=? WHERE student_id=? AND item_id=?')
+                  .run(nextReviewDate(1), now, existingSession.student_id, item_id)
+              }
+            } else if (quiz_type === 'zh_to_en') {
+              const ns = Math.min(5, m.zh_to_en_stage + 1)
+              db.prepare(`
+                UPDATE student_mastery
+                SET zh_to_en_stage=?, zh_to_en_next=?,
+                    zh_to_en_level = MIN(100, zh_to_en_level + 10),
+                    last_reviewed_at=?, updated_at=?
+                WHERE student_id=? AND item_id=?
+              `).run(ns, nextReviewDate(ns), now, now, existingSession.student_id, item_id)
+              if (ns >= 2 && m.spelling_stage === 0 && item.type === 'word') {
+                db.prepare('UPDATE student_mastery SET spelling_stage=1, spelling_next=?, updated_at=? WHERE student_id=? AND item_id=?')
+                  .run(nextReviewDate(1), now, existingSession.student_id, item_id)
+              }
+            } else if (quiz_type === 'spelling' && item.type === 'word') {
+              const ns = Math.min(5, m.spelling_stage + 1)
+              db.prepare(`
+                UPDATE student_mastery
+                SET spelling_stage=?, spelling_next=?,
+                    spelling_level = MIN(100, COALESCE(spelling_level, 0) + 10),
+                    last_reviewed_at=?, updated_at=?
+                WHERE student_id=? AND item_id=?
+              `).run(ns, nextReviewDate(ns), now, now, existingSession.student_id, item_id)
+            }
+          }
+        })()
+      }
+
+      const allItems = db.prepare(`
         SELECT i.*, si.quiz_type AS item_quiz_type, si.sort_order
         FROM session_items si
         JOIN items i ON i.id = si.item_id
         WHERE si.session_id = ?
         ORDER BY si.sort_order ASC
-      `).all(existingSession.id)
-      res.json({ session: existingSession, items })
+      `).all(existingSession.id) as any[]
+      const remainingItems = allItems.filter(item => !correctSet.has(item.id))
+
+      if (correctSet.size > 0) {
+        db.prepare('UPDATE quiz_sessions SET total_words=? WHERE id=?').run(remainingItems.length, existingSession.id)
+      }
+      const updatedSession = db.prepare('SELECT * FROM quiz_sessions WHERE id=?').get(existingSession.id)
+      res.json({ session: updatedSession, items: remainingItems })
       return
     }
     // 计划已更新，废弃旧 session
     db.prepare(`UPDATE quiz_sessions SET status = 'abandoned' WHERE id = ?`).run(existingSession.id)
   }
 
-  const taskItems = buildTodayItems(sid, wid, plan)
+  const { items: taskItems } = buildTodayItems(sid, wid, plan)
   if (taskItems.length === 0) {
     res.status(400).json({ error: '今日没有待学习/复习的词条' }); return
   }

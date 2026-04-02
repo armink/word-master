@@ -126,8 +126,18 @@ export default function TasksPage() {
                   disabled={starting}
                   className="w-full bg-primary-600 text-white py-4 rounded-2xl text-lg font-bold disabled:opacity-50 active:scale-95 transition-transform"
                 >
-                  {starting ? '准备中…' : `开始今日任务（共 ${task.review_count + task.new_count} 词）`}
+                  {starting
+                    ? '准备中…'
+                    : task.in_progress_answered > 0
+                      ? `继续今日任务（剩余 ${task.review_count + task.new_count} 词）`
+                      : `开始今日任务（共 ${task.review_count + task.new_count} 词）`
+                  }
                 </button>
+                {task.in_progress_answered > 0 && (
+                  <p className="text-center text-sm text-primary-600 mt-2">
+                    ✅ 已答对 {task.in_progress_answered} 词，加油继续！
+                  </p>
+                )}
               </>
             )}
           </>

@@ -2,10 +2,11 @@ import { useState } from 'react'
 
 interface Props {
   text: string
+  vcn?: string   // 发音人：英文用 'aisxping'（默认），中文用 'xiaoyan'
   className?: string
 }
 
-export default function TtsButton({ text, className = '' }: Props) {
+export default function TtsButton({ text, vcn, className = '' }: Props) {
   const [playing, setPlaying] = useState(false)
 
   const handlePlay = async () => {
@@ -15,7 +16,7 @@ export default function TtsButton({ text, className = '' }: Props) {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, ...(vcn ? { vcn } : {}) }),
       })
       if (!res.ok) throw new Error('TTS failed')
       const blob = await res.blob()

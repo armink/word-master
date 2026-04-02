@@ -54,6 +54,8 @@ export default function QuizPage() {
   const [voiceError, setVoiceError] = useState('')
   const [isChecking, setIsChecking] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const finishingRef = useRef(false)
+  const [exitConfirm, setExitConfirm] = useState(false)
 
   useEffect(() => {
     if (!sessionId) return
@@ -81,11 +83,26 @@ export default function QuizPage() {
   }, [cardState, currentItem, currentQuizType])
 
   const doFinish = useCallback(async () => {
-    if (finishing) return
+    if (finishingRef.current) return
+    finishingRef.current = true
     setFinishing(true)
     try { await finishSession(Number(sessionId)) } catch { /* ignore */ }
     navigate(`/quiz/${sessionId}/result`)
-  }, [finishing, sessionId, navigate])
+  }, [sessionId, navigate])
+
+  // 拦截手机右滑/浏览器返回：进入页面时压入一条历史记录，
+  // 用户后退时触发 popstate，显示确认弹窗而非直接退出
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href)
+    const onPopState = () => {
+      if (finishingRef.current) return
+      // 再次压入，使"返回"一直可以被拦截
+      window.history.pushState(null, '', window.location.href)
+      setExitConfirm(true)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   const advanceQueue = useCallback((correct: boolean) => {
     setUserAnswer('')
@@ -133,7 +150,7 @@ export default function QuizPage() {
   const handleSkip = useCallback(async () => {
     if (!session || !currentItem || cardState !== 'answering') return
     const durationMs = Date.now() - cardStartTime
-    playWrong()
+    // 不播错误音："不知道" 只是跳过，不应给孩子施加紧张感
     const first = isFirstAttempt.has(currentItem.id)
     if (first) setIsFirstAttempt(prev => { const s = new Set(prev); s.delete(currentItem.id); return s })
     setCardState('wrong')
@@ -158,10 +175,10 @@ export default function QuizPage() {
   const correctAnswer = currentQuizType === 'en_to_zh' ? currentItem.chinese : currentItem.english
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 max-w-md mx-auto relative">
       {/* 顶栏 */}
       <div className="flex items-center gap-3 px-4 pt-6 pb-2">
-        <button onClick={() => navigate('/tasks')} className="text-gray-400 text-xl">✕</button>
+        <button onClick={() => setExitConfirm(true)} className="text-gray-400 text-xl">✕</button>
         <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
           <div
             className="h-full bg-primary-500 rounded-full transition-all duration-500"
@@ -238,9 +255,11 @@ export default function QuizPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-red-700 font-semibold text-sm">❌ 正确答案：</p>
                         <p className="text-red-800 font-bold">{correctAnswer}</p>
-                        {currentQuizType !== 'en_to_zh' && (
-                          <TtsButton text={currentItem.english} className="w-6 h-6 shrink-0" />
-                        )}
+                        {/* 英译中：朗读中文答案；中译英/拼写：朗读英文答案 */}
+                        {currentQuizType === 'en_to_zh'
+                          ? <TtsButton text={currentItem.chinese} vcn="xiaoyan" className="w-6 h-6 shrink-0" />
+                          : <TtsButton text={currentItem.english} className="w-6 h-6 shrink-0" />
+                        }
                       </div>
                       {currentItem.example_en && (
                         <div className="flex items-center gap-1.5 mt-0.5">
@@ -283,9 +302,21 @@ export default function QuizPage() {
                     <VoiceInput
                       lang={currentQuizType === 'en_to_zh' ? 'zh_cn' : 'en_us'}
                       onResult={text => {
+                        // 方案C：英译中要求纯中文（含中文 且 不含英文字母）
+                        // 直接说英文也会被识别到，导致例如 beautiful 的发音被转成 beautiful 通过
+                        const hasChinese = /[\u4e00-\u9fa5]/.test(text)
+                        const hasLatin = /[a-zA-Z]/.test(text)
+                        if (currentQuizType === 'en_to_zh' && (!hasChinese || hasLatin)) {
+                          setVoiceError('请只说中文！识别到含有英文，请重试')
+                          return
+                        }
+                        if (currentQuizType !== 'en_to_zh' && !hasLatin) {
+                          setVoiceError('请说英文！识别到的不像英文，再试一次')
+                          return
+                        }
                         setUserAnswer(text)
                         setVoiceError('')
-                        handleSubmit(text)   // 语音松开后直接判断，无需手动提交
+                        handleSubmit(text)
                       }}
                       onError={msg => setVoiceError(msg)}
                       disabled={isChecking}
@@ -331,6 +362,36 @@ export default function QuizPage() {
           {queue.length > totalItems && ` （含 ${queue.length - totalItems} 个待重练）`}
         </p>
       </div>
+
+      {/* 退出确认弹窗（✕ 按钮 / 右滑手势 / 浏览器返回时触发） */}
+      {exitConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6">
+          <div className="bg-white rounded-3xl p-6 shadow-xl w-full max-w-sm">
+            <p className="text-lg font-bold text-gray-800 mb-1">退出测验？</p>
+            <p className="text-sm text-gray-500 mb-5">
+              已作答的词汇进度会保存，未答的不计入本轮成绩。
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  setExitConfirm(false)
+                  finishingRef.current = true
+                  navigate('/tasks')
+                }}
+                className="w-full py-3 rounded-2xl bg-gray-700 text-white font-bold active:scale-95 transition-transform"
+              >
+                退出并保存进度
+              </button>
+              <button
+                onClick={() => setExitConfirm(false)}
+                className="w-full py-3 rounded-2xl bg-primary-50 text-primary-700 font-bold active:scale-95 transition-transform"
+              >
+                继续答题
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -213,7 +213,7 @@ export default function QuizPage() {
             {/* 题目词 + TTS */}
             <div className="flex items-start gap-3 mb-1">
               <p className="flex-1 text-3xl font-bold text-gray-800 leading-tight">
-                {quizPrompt(currentItem, session.quiz_type)}
+                {quizPrompt(currentItem, currentQuizType)}
               </p>
               {currentQuizType === 'en_to_zh' && (
                 <TtsButton text={currentItem.english} className="w-10 h-10 shrink-0 mt-1" />

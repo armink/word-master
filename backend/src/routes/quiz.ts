@@ -245,11 +245,12 @@ router.post('/sessions/:id/finish', (req, res) => {
 
         if (m) {
           if (qt === 'en_to_zh') {
-            // 新词（stage=0）：答对 → stage 1；答错 → 也定为 stage 1（已引入，当日重练）
+            // 已掌握词答错 → 当日重练；全新词（stage=0）答错 → 明天再来，避免退出后立即塞回队列
             const newStage = is_correct
               ? Math.min(5, m.en_to_zh_stage + 1)
               : Math.max(1, m.en_to_zh_stage)
-            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            const nextDate = is_correct ? nextReviewDate(newStage)
+              : m.en_to_zh_stage === 0 ? nextReviewDate(1) : today
             db.prepare(`
               UPDATE student_mastery
               SET introduced_date = CASE WHEN introduced_date = 0 THEN ? ELSE introduced_date END,
@@ -264,7 +265,8 @@ router.post('/sessions/:id/finish', (req, res) => {
             }
           } else if (qt === 'zh_to_en') {
             const newStage = is_correct ? Math.min(5, m.zh_to_en_stage + 1) : m.zh_to_en_stage
-            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            const nextDate = is_correct ? nextReviewDate(newStage)
+              : m.zh_to_en_stage === 0 ? nextReviewDate(1) : today
             db.prepare(
               'UPDATE student_mastery SET zh_to_en_stage=?, zh_to_en_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
             ).run(newStage, nextDate, now, now, session.student_id, item_id)
@@ -276,7 +278,8 @@ router.post('/sessions/:id/finish', (req, res) => {
             }
           } else if (qt === 'spelling' && item.type === 'word') {
             const newStage = is_correct ? Math.min(5, m.spelling_stage + 1) : m.spelling_stage
-            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            const nextDate = is_correct ? nextReviewDate(newStage)
+              : m.spelling_stage === 0 ? nextReviewDate(1) : today
             db.prepare(
               'UPDATE student_mastery SET spelling_stage=?, spelling_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
             ).run(newStage, nextDate, now, now, session.student_id, item_id)

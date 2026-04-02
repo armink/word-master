@@ -41,9 +41,7 @@ export function initSchema() {
     ['spelling_next',   'INTEGER NOT NULL DEFAULT 0'],
   ]
   for (const [col, def] of masteryNewCols) {
-    try {
-      db.exec(`ALTER TABLE student_mastery ADD COLUMN ${col} ${def}`)
-    } catch { /* 列已存在，忽略 */ }
+    try { db.exec(`ALTER TABLE student_mastery ADD COLUMN ${col} ${def}`) } catch { /* 列已存在 */ }
   }
 
   db.exec(`
@@ -125,4 +123,17 @@ export function initSchema() {
   `)
 
   console.log('数据库表结构初始化完成')
+
+  // ── items 扩展列（幂等，必须在 CREATE TABLE items 之后）────────────
+  // example_status: pending=待生成 / generating=生成中 / done=已完成 / failed=失败
+  const itemsNewCols: [string, string][] = [
+    ['example_status', "TEXT NOT NULL DEFAULT 'pending'"],
+  ]
+  for (const [col, def] of itemsNewCols) {
+    try {
+      db.exec(`ALTER TABLE items ADD COLUMN ${col} ${def}`)
+    } catch { /* 列已存在，忽略 */ }
+  }
+  // 已有例句的条目直接标记为 done，避免重复生成
+  db.exec(`UPDATE items SET example_status = 'done' WHERE example_en IS NOT NULL AND example_status = 'pending'`)
 }

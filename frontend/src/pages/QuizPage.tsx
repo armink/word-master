@@ -53,6 +53,8 @@ export default function QuizPage() {
   const [finishing, setFinishing] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [isChecking, setIsChecking] = useState(false)
+  // 答错后「下一个」按钮的倒计时秒数（0 = 可点击，>0 = 锁定中）
+  const [wrongCountdown, setWrongCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const finishingRef = useRef(false)
   // 「不知道」按钮 ref，用原生非被动 touchstart 阻断 Android Chrome 长按「标记为广告」
@@ -83,6 +85,37 @@ export default function QuizPage() {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [cardState, currentItem, currentQuizType])
+
+  // 答错后：自动朗读正确答案 + 启动 4 秒倒计时锁定「下一个」按钮
+  useEffect(() => {
+    if (cardState !== 'wrong' || !currentItem) return
+
+    // ① 自动朗读正确答案（英译中念中文，中译英念英文）
+    const ttsText = currentQuizType === 'en_to_zh' ? currentItem.chinese : currentItem.english
+    const vcn    = currentQuizType === 'en_to_zh' ? 'xiaoyan' : undefined
+    fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: ttsText, ...(vcn ? { vcn } : {}) }),
+    }).then(r => r.ok ? r.blob() : null).then(blob => {
+      if (!blob) return
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audio.onended = () => URL.revokeObjectURL(url)
+      audio.play().catch(() => {})
+    }).catch(() => {})
+
+    // ② 4 秒倒计时，强制用户停留看例句
+    setWrongCountdown(4)
+    const timer = setInterval(() => {
+      setWrongCountdown(prev => {
+        if (prev <= 1) { clearInterval(timer); return 0 }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardState, currentItem?.id])
 
   // 「不知道」按钮原生非被动 touchstart：阻断 Android Chrome 长按「标记为广告」
   // showSkip 变化时重新绑定（按钮在 spelling 模式下不渲染）
@@ -166,6 +199,9 @@ export default function QuizPage() {
     // 不播错误音："不知道" 只是跳过，不应给孩子施加紧张感
     const first = isFirstAttempt.has(currentItem.id)
     if (first) setIsFirstAttempt(prev => { const s = new Set(prev); s.delete(currentItem.id); return s })
+    // 同步设置 wrongCountdown，确保「下一个」在同一批渲染中就已 disabled，
+    // 防止 ghost click 在 useEffect 更新 wrongCountdown 之前落到「下一个」按钮上
+    setWrongCountdown(4)
     setCardState('wrong')
     try {
       await submitAnswer(Number(sessionId), {
@@ -364,14 +400,26 @@ export default function QuizPage() {
                 </>
               ) : (
                 <button
-                  onClick={() => advanceQueue(isCorrect)}
-                  className={`w-full py-3.5 rounded-2xl text-base font-bold active:scale-95 transition-transform
+                  onClick={() => wrongCountdown === 0 && advanceQueue(isCorrect)}
+                  disabled={wrongCountdown > 0}
+                  className={`w-full py-3.5 rounded-2xl text-base font-bold transition-all overflow-hidden relative
                     ${isCorrect
-                      ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                      : 'bg-red-400 text-white hover:bg-red-500'
+                      ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
+                      : wrongCountdown > 0
+                        ? 'bg-red-200 text-red-400 cursor-not-allowed'
+                        : 'bg-red-400 text-white hover:bg-red-500 active:scale-95'
                     }`}
                 >
-                  {isCorrect ? '继续 →' : '下一个 →'}
+                  {/* 答错时的进度条背景 */}
+                  {isWrong && wrongCountdown > 0 && (
+                    <span
+                      className="absolute inset-0 bg-red-300 origin-left transition-none"
+                      style={{ transform: `scaleX(${(4 - wrongCountdown) / 4})` }}
+                    />
+                  )}
+                  <span className="relative">
+                    {isCorrect ? '继续 →' : wrongCountdown > 0 ? `再看 ${wrongCountdown} 秒…` : '下一个 →'}
+                  </span>
                 </button>
               )}
             </div>
@@ -395,9 +443,10 @@ export default function QuizPage() {
             </p>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   setExitConfirm(false)
                   finishingRef.current = true
+                  try { await finishSession(Number(sessionId)) } catch { /* ignore */ }
                   navigate('/tasks')
                 }}
                 className="w-full py-3 rounded-2xl bg-gray-700 text-white font-bold active:scale-95 transition-transform"

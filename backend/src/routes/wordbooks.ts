@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import db from '../db/client'
 import type { WordbookRow, WordbookWithCount, ItemType } from '../types/index'
+import { generateExample } from '../services/deepseek'
 
 const router = Router()
 
@@ -150,6 +151,45 @@ router.post('/:id/import', (req, res) => {
 
   const result = importTx()
   res.json({ success: true, ...result })
+
+  // 导入完成后，后台异步为新插入的词条生成例句（不阻塞响应）
+  // 只处理本次导入的、还没有例句的词条
+  if (process.env.DEEPSEEK_API_KEY) {
+    setImmediate(() => triggerExampleGeneration(Number(req.params.id)))
+  }
 })
+
+/**
+ * 为指定 wordbook 中所有 example_status='pending' 的词条异步生成例句
+ * 顺序逐条执行（避免短时间大量并发请求）
+ */
+async function triggerExampleGeneration(wordbookId: number) {
+  const pending = db.prepare(`
+    SELECT i.id, i.english, i.chinese
+    FROM items i
+    JOIN wordbook_items wi ON wi.item_id = i.id
+    WHERE wi.wordbook_id = ? AND i.example_status = 'pending'
+    ORDER BY i.id ASC
+  `).all(wordbookId) as { id: number; english: string; chinese: string }[]
+
+  if (pending.length === 0) return
+  console.log(`[examples] 开始为词库 ${wordbookId} 生成 ${pending.length} 条例句…`)
+
+  const updateStmt = db.prepare(`UPDATE items SET example_en=?, example_zh=?, example_status='done' WHERE id=?`)
+  const markFailed = db.prepare(`UPDATE items SET example_status='failed' WHERE id=?`)
+
+  for (const item of pending) {
+    try {
+      const ex = await generateExample(item.english, item.chinese)
+      updateStmt.run(ex.example_en, ex.example_zh, item.id)
+    } catch (err) {
+      markFailed.run(item.id)
+      console.warn(`[examples] 生成失败 ${item.english}: ${(err as Error).message}`)
+    }
+    // 每条之间间隔 400ms，控制 API 请求速率
+    await new Promise(r => setTimeout(r, 400))
+  }
+  console.log(`[examples] 词库 ${wordbookId} 例句生成完毕`)
+}
 
 export default router

@@ -48,12 +48,32 @@ router.get('/:id', (req, res) => {
 })
 
 // DELETE /api/wordbooks/:id
+// ?force=1 时跳过有数据检查，直接删除（CASCADE 清理关联数据）
 router.delete('/:id', (req, res) => {
-  const wordbook = db.prepare('SELECT id FROM wordbooks WHERE id = ?').get(req.params.id)
+  const wordbook = db.prepare('SELECT id, name FROM wordbooks WHERE id = ?').get(req.params.id) as { id: number; name: string } | undefined
   if (!wordbook) {
     res.status(404).json({ error: '单词本不存在' })
     return
   }
+
+  if (req.query.force !== '1') {
+    // 检查是否有学习数据
+    const masteryCount = (db.prepare(`
+      SELECT COUNT(*) AS c FROM student_mastery sm
+      JOIN wordbook_items wi ON wi.item_id = sm.item_id
+      WHERE wi.wordbook_id = ? AND sm.introduced_date > 0
+    `).get(req.params.id) as { c: number }).c
+
+    if (masteryCount > 0) {
+      res.status(409).json({
+        error: '该单词本含有学习进度',
+        has_data: true,
+        mastery_count: masteryCount,
+      })
+      return
+    }
+  }
+
   db.prepare('DELETE FROM wordbooks WHERE id = ?').run(req.params.id)
   res.status(204).send()
 })

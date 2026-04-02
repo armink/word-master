@@ -55,6 +55,8 @@ export default function QuizPage() {
   const [isChecking, setIsChecking] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const finishingRef = useRef(false)
+  // 「不知道」按钮 ref，用原生非被动 touchstart 阻断 Android Chrome 长按「标记为广告」
+  const skipBtnRef = useRef<HTMLButtonElement>(null)
   const [exitConfirm, setExitConfirm] = useState(false)
 
   useEffect(() => {
@@ -81,6 +83,17 @@ export default function QuizPage() {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [cardState, currentItem, currentQuizType])
+
+  // 「不知道」按钮原生非被动 touchstart：阻断 Android Chrome 长按「标记为广告」
+  // showSkip 变化时重新绑定（按钮在 spelling 模式下不渲染）
+  const showSkip = currentQuizType !== 'spelling' && !isChecking
+  useEffect(() => {
+    const el = skipBtnRef.current
+    if (!el) return
+    const prevent = (e: TouchEvent) => e.preventDefault()
+    el.addEventListener('touchstart', prevent, { passive: false })
+    return () => el.removeEventListener('touchstart', prevent)
+  }, [showSkip])
 
   const doFinish = useCallback(async () => {
     if (finishingRef.current) return
@@ -322,10 +335,19 @@ export default function QuizPage() {
                       disabled={isChecking}
                     />
                   )}
-                  {currentQuizType !== 'spelling' && !isChecking && (
+                  {showSkip && (
                     <button
+                      ref={skipBtnRef}
                       onClick={handleSkip}
-                      className="w-full mt-2 py-2 rounded-2xl text-sm text-gray-400 border border-gray-200 bg-white hover:bg-gray-50 active:scale-95 transition-transform"
+                      onTouchEnd={handleSkip}
+                      onContextMenu={e => e.preventDefault()}
+                      style={{
+                        touchAction: 'none',
+                        WebkitTouchCallout: 'none',
+                        WebkitUserSelect: 'none',
+                        userSelect: 'none',
+                      } as React.CSSProperties}
+                      className="w-full mt-2 py-2 rounded-2xl text-sm text-gray-400 border border-gray-200 bg-white hover:bg-gray-50 active:scale-95 transition-transform select-none"
                     >
                       不知道
                     </button>

@@ -42,6 +42,15 @@ export const createWordbook = (name: string, description?: string) =>
 export const getWordbookDetail = (id: number) =>
   request<WordbookDetail>(`/wordbooks/${id}`)
 
+export const deleteWordbook = async (id: number, force = false): Promise<{ has_data?: boolean; mastery_count?: number } | null> => {
+  const url = `${BASE}/wordbooks/${id}${force ? '?force=1' : ''}`
+  const res = await fetch(url, { method: 'DELETE' })
+  if (res.status === 204) return null
+  const data = await res.json()
+  if (res.status === 409 && data.has_data) return data
+  throw new Error(data.error ?? '删除失败')
+}
+
 export const importWords = (id: number, text: string) =>
   request<{ success: boolean; imported: number; skipped: number }>(
     `/wordbooks/${id}/import`,

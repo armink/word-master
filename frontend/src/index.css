@@ -11,4 +11,15 @@
   body {
     @apply bg-gray-50 text-gray-900;
   }
+
+  /* 全局禁止长按弹出原生上下文菜单（iOS Safari callout / Android 标记为广告）
+     touch-action:none 告诉浏览器「此元素自行处理所有触摸事件，不要触发任何默认手势（包括长按菜单）」
+     !important 写在 @layer base 里——CSS 层叠优先级中，@layer base !important
+     反而比 @layer utilities !important 优先级更高，确保覆盖所有 Tailwind 类 */
+  button, a, [role="button"] {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    touch-action: none !important;
+  }
 }

@@ -212,6 +212,21 @@ router.post('/sessions/:id/finish', (req, res) => {
         VALUES (?, ?, ?)
       `).run(session.student_id, item_id, item.type === 'phrase' ? null : 0)
 
+      // ── 计划模式：首先读取当前 stage，对"全新词答错"直接跳过全部 mastery 更新 ──────
+      // 新词（stage=0）答错 → 不写 introduced_date，保持未引入状态，下次仍作为新词出现
+      // 这样 todayIntroduced 只计答对的新词，dailyNewRemaining 才正确扣减
+      if (isPlanMode && !is_correct) {
+        const qt = itemQtMap.get(item_id) ?? session.quiz_type
+        type StageRow = { en_to_zh_stage: number; zh_to_en_stage: number; spelling_stage: number }
+        const sm = db.prepare(
+          'SELECT en_to_zh_stage, zh_to_en_stage, spelling_stage FROM student_mastery WHERE student_id=? AND item_id=?'
+        ).get(session.student_id, item_id) as StageRow | undefined
+        const currentStage = qt === 'en_to_zh' ? sm?.en_to_zh_stage
+          : qt === 'zh_to_en' ? sm?.zh_to_en_stage
+          : sm?.spelling_stage
+        if ((currentStage ?? 0) === 0) continue  // 全新词答错，跳过，保持未引入
+      }
+
       if (session.quiz_type === 'en_to_zh') {
         db.prepare(`
           UPDATE student_mastery
@@ -245,12 +260,11 @@ router.post('/sessions/:id/finish', (req, res) => {
 
         if (m) {
           if (qt === 'en_to_zh') {
-            // 已掌握词答错 → 当日重练；全新词（stage=0）答错 → 明天再来，避免退出后立即塞回队列
+            // 到这里 is_correct=true 或 stage>0（已引入词答错）
             const newStage = is_correct
               ? Math.min(5, m.en_to_zh_stage + 1)
               : Math.max(1, m.en_to_zh_stage)
-            const nextDate = is_correct ? nextReviewDate(newStage)
-              : m.en_to_zh_stage === 0 ? nextReviewDate(1) : today
+            const nextDate = is_correct ? nextReviewDate(newStage) : today
             db.prepare(`
               UPDATE student_mastery
               SET introduced_date = CASE WHEN introduced_date = 0 THEN ? ELSE introduced_date END,
@@ -265,8 +279,7 @@ router.post('/sessions/:id/finish', (req, res) => {
             }
           } else if (qt === 'zh_to_en') {
             const newStage = is_correct ? Math.min(5, m.zh_to_en_stage + 1) : m.zh_to_en_stage
-            const nextDate = is_correct ? nextReviewDate(newStage)
-              : m.zh_to_en_stage === 0 ? nextReviewDate(1) : today
+            const nextDate = is_correct ? nextReviewDate(newStage) : today
             db.prepare(
               'UPDATE student_mastery SET zh_to_en_stage=?, zh_to_en_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
             ).run(newStage, nextDate, now, now, session.student_id, item_id)
@@ -278,8 +291,7 @@ router.post('/sessions/:id/finish', (req, res) => {
             }
           } else if (qt === 'spelling' && item.type === 'word') {
             const newStage = is_correct ? Math.min(5, m.spelling_stage + 1) : m.spelling_stage
-            const nextDate = is_correct ? nextReviewDate(newStage)
-              : m.spelling_stage === 0 ? nextReviewDate(1) : today
+            const nextDate = is_correct ? nextReviewDate(newStage) : today
             db.prepare(
               'UPDATE student_mastery SET spelling_stage=?, spelling_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
             ).run(newStage, nextDate, now, now, session.student_id, item_id)

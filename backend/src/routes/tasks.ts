@@ -87,6 +87,15 @@ function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanR
     .filter(item => !correctInProgress.has((item as TodayTaskItem).item_id)) as TodayTaskItem[]
 
   // ── 2. 今日新词 ─────────────────────────────────────────────────
+  // 今日已引入词数（扣减今日配额，避免每次都重新取 daily_new 个新词）
+  const todayIntroduced = (db.prepare(`
+    SELECT COUNT(*) AS c FROM student_mastery sm
+    JOIN wordbook_items wi ON wi.item_id = sm.item_id AND wi.wordbook_id = ?
+    WHERE sm.student_id = ? AND sm.introduced_date = ?
+  `).get(wordbookId, studentId, today) as { c: number }).c
+
+  const dailyNewRemaining = Math.max(0, plan.daily_new - todayIntroduced)
+
   const newRows = db.prepare(`
     SELECT i.id AS item_id
     FROM wordbook_items wi
@@ -98,7 +107,7 @@ function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanR
       )
     ORDER BY wi.sort_order ASC, i.id ASC
     LIMIT ?
-  `).all(wordbookId, studentId, plan.daily_new) as { item_id: number }[]
+  `).all(wordbookId, studentId, dailyNewRemaining) as { item_id: number }[]
 
   const newItems: TodayTaskItem[] = newRows
     .filter(r => !correctInProgress.has(r.item_id))
@@ -108,7 +117,7 @@ function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanR
       is_new: true,
     }))
 
-  return { items: [...reviewItems, ...newItems], in_progress_answered: correctInProgress.size }
+  return { items: [...reviewItems, ...newItems], in_progress_answered: correctInProgress.size, today_introduced: todayIntroduced }
 }
 
 // ── GET /api/tasks/today ──────────────────────────────────────────
@@ -124,11 +133,11 @@ router.get('/today', (req, res) => {
   ).get(sid, wid) as StudyPlanRow | undefined
   if (!plan) { res.status(404).json({ error: '未找到激活的学习计划' }); return }
 
-  const { items, in_progress_answered } = buildTodayItems(sid, wid, plan)
+  const { items, in_progress_answered, today_introduced } = buildTodayItems(sid, wid, plan)
   const reviewCount = items.filter(i => !i.is_new).length
   const newCount = items.filter(i => i.is_new).length
 
-  // 剩余未引入词数
+  // 剩余未引入词数（total_not_introduced - newCount，即今日额度之外的未学词）
   const remaining = (db.prepare(`
     SELECT COUNT(*) AS c FROM wordbook_items wi
     WHERE wi.wordbook_id = ?
@@ -142,6 +151,7 @@ router.get('/today', (req, res) => {
     review_count: reviewCount,
     new_count: newCount,
     remaining_new: Math.max(0, remaining),
+    today_introduced,
     in_progress_answered,
     items,
   }

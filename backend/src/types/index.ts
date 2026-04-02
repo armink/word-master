@@ -77,6 +77,7 @@ export interface TodayTask {
   review_count: number
   new_count: number
   remaining_new: number     // 单词本中还未引入的词数
+  today_introduced: number  // 今日已引入（含已完成 session 答对）的词数
   in_progress_answered: number  // 当前 in_progress session 中已答对词数（中途退出场景）
   items: TodayTaskItem[]    // 已按复习在前、新词在后排序
 }

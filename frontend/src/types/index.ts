@@ -109,6 +109,7 @@ export interface TodayTask {
   review_count: number
   new_count: number
   remaining_new: number
+  today_introduced: number
   in_progress_answered: number
   items: TodayTaskItem[]
 }

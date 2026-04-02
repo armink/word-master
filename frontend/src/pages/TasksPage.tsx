@@ -128,7 +128,7 @@ export default function TasksPage() {
                 >
                   {starting
                     ? '准备中…'
-                    : task.in_progress_answered > 0
+                    : (task.in_progress_answered > 0 || task.today_introduced > 0)
                       ? `继续今日任务（剩余 ${task.review_count + task.new_count} 词）`
                       : `开始今日任务（共 ${task.review_count + task.new_count} 词）`
                   }
@@ -136,6 +136,11 @@ export default function TasksPage() {
                 {task.in_progress_answered > 0 && (
                   <p className="text-center text-sm text-primary-600 mt-2">
                     ✅ 已答对 {task.in_progress_answered} 词，加油继续！
+                  </p>
+                )}
+                {task.in_progress_answered === 0 && task.today_introduced > 0 && (
+                  <p className="text-center text-sm text-primary-600 mt-2">
+                    ✅ 今日已学 {task.today_introduced} 词，继续加油！
                   </p>
                 )}
               </>

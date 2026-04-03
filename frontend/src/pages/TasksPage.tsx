@@ -82,16 +82,30 @@ export default function TasksPage() {
         ) : task ? (
           <>
             {/* 任务统计卡片 */}
-            <div className="grid grid-cols-2 gap-3 mb-5">
-              <div className="bg-blue-50 rounded-2xl p-4 text-center">
-                <p className="text-3xl font-bold text-blue-600">{task.review_count}</p>
-                <p className="text-xs text-blue-500 mt-1">🔁 需要复习</p>
-              </div>
-              <div className="bg-green-50 rounded-2xl p-4 text-center">
-                <p className="text-3xl font-bold text-green-600">{task.new_count}</p>
-                <p className="text-xs text-green-500 mt-1">🆕 今日新词</p>
-              </div>
-            </div>
+            {(() => {
+              const reviewEnToZh = task.items.filter(i => !i.is_new && i.quiz_type === 'en_to_zh').length
+              const reviewZhToEn = task.items.filter(i => !i.is_new && i.quiz_type === 'zh_to_en').length
+              const reviewSpelling = task.items.filter(i => !i.is_new && i.quiz_type === 'spelling').length
+              return (
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                  <div className="bg-blue-50 rounded-2xl p-4 text-center">
+                    <p className="text-3xl font-bold text-blue-600">{task.review_count}</p>
+                    <p className="text-xs text-blue-500 mt-1">🔁 需要复习</p>
+                    {task.review_count > 0 && (
+                      <div className="mt-2 flex flex-wrap justify-center gap-1">
+                        {reviewEnToZh > 0 && <span className="text-xs bg-white rounded-full px-2 py-0.5 text-blue-400">英→中 {reviewEnToZh}</span>}
+                        {reviewZhToEn > 0 && <span className="text-xs bg-white rounded-full px-2 py-0.5 text-blue-400">中→英 {reviewZhToEn}</span>}
+                        {reviewSpelling > 0 && <span className="text-xs bg-white rounded-full px-2 py-0.5 text-blue-400">拼写 {reviewSpelling}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="bg-green-50 rounded-2xl p-4 text-center">
+                    <p className="text-3xl font-bold text-green-600">{task.new_count}</p>
+                    <p className="text-xs text-green-500 mt-1">🆕 今日新词</p>
+                  </div>
+                </div>
+              )
+            })()}
 
             {(task.review_count + task.new_count) === 0 ? (
               <div className="text-center py-8">

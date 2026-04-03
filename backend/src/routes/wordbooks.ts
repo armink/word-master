@@ -116,6 +116,13 @@ router.post('/:id/import', (req, res) => {
   // 按换行或分号分隔，每条格式为 english:chinese
   const entries = text.split(/[\n;]/).map((s: string) => s.trim()).filter(Boolean)
 
+  const checkExisting = db.prepare(`
+    SELECT wi.item_id FROM wordbook_items wi
+    JOIN items i ON i.id = wi.item_id
+    WHERE wi.wordbook_id = ? AND lower(i.english) = lower(?)
+    LIMIT 1
+  `)
+
   const importTx = db.transaction(() => {
     let imported = 0
     let skipped = 0
@@ -125,6 +132,9 @@ router.post('/:id/import', (req, res) => {
     ).get(req.params.id) as { next: number }
     let sortOrder = nextRow.next
 
+    // 批次内去重
+    const seenInBatch = new Set<string>()
+
     for (const entry of entries) {
       const colonIdx = entry.indexOf(':')
       if (colonIdx === -1) { skipped++; continue }
@@ -132,6 +142,15 @@ router.post('/:id/import', (req, res) => {
       const english = entry.slice(0, colonIdx).trim()
       const chinese = entry.slice(colonIdx + 1).trim()
       if (!english || !chinese) { skipped++; continue }
+
+      const key = english.toLowerCase()
+
+      // 批次内重复跳过
+      if (seenInBatch.has(key)) { skipped++; continue }
+      seenInBatch.add(key)
+
+      // 单词本内已存在相同英文词则跳过
+      if (checkExisting.get(req.params.id, english)) { skipped++; continue }
 
       // 有空格视为短语，否则为单词
       const type: ItemType = english.includes(' ') ? 'phrase' : 'word'

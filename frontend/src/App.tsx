@@ -13,7 +13,12 @@ export default function App() {
   // 全局禁止长按弹出系统上下文菜单（Android Chrome「标记为广告」等）
   // 放在 useEffect 而非 main.tsx 模块级，确保 Vite HMR 后仍然生效
   useEffect(() => {
-    const prevent = (e: Event) => e.preventDefault()
+    const prevent = (e: Event) => {
+      const t = e.target as HTMLElement
+      // 可编辑元素需要长按粘贴菜单，不拦截
+      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable) return
+      e.preventDefault()
+    }
     document.addEventListener('contextmenu', prevent, { capture: true })
     return () => document.removeEventListener('contextmenu', prevent, { capture: true })
   }, [])

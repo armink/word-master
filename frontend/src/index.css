@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 语音输入波形条动画 */
+@keyframes voiceBar {
+  from { transform: scaleY(0.2); opacity: 0.6; }
+  to   { transform: scaleY(1);   opacity: 1;   }
+}
+
 @layer base {
   html {
     font-family: 'Inter', system-ui, sans-serif;

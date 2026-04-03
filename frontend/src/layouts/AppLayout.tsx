@@ -6,7 +6,7 @@ export default function AppLayout() {
       <main className="flex-1 pb-16">
         <Outlet />
       </main>
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex">
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <NavLink
           to="/"
           end
@@ -36,13 +36,22 @@ export default function AppLayout() {
           <span>单词本</span>
         </NavLink>
         <NavLink
+          to="/pet"
+          className={({ isActive }) =>
+            `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-primary-600' : 'text-gray-500'}`
+          }
+        >
+          <span className="text-xl">🐾</span>
+          <span>宠物</span>
+        </NavLink>
+        <NavLink
           to="/records"
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center py-2 text-xs ${isActive ? 'text-primary-600' : 'text-gray-500'}`
           }
         >
           <span className="text-xl">📊</span>
-          <span>学习记录</span>
+          <span>记录</span>
         </NavLink>
       </nav>
     </div>

@@ -8,6 +8,8 @@ import TasksPage from '@/pages/TasksPage'
 import QuizPage from '@/pages/QuizPage'
 import QuizResultPage from '@/pages/QuizResultPage'
 import RecordsPage from '@/pages/RecordsPage'
+import PetPage from '@/pages/PetPage'
+import PetGamePage from '@/pages/PetGamePage'
 
 export default function App() {
   // 全局禁止长按弹出系统上下文菜单（Android Chrome「标记为广告」等）
@@ -32,10 +34,12 @@ export default function App() {
           <Route path="wordbooks/:id" element={<WordbookDetailPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="records" element={<RecordsPage />} />
+          <Route path="pet" element={<PetPage />} />
         </Route>
         {/* 测验页不使用底部导航布局 */}
         <Route path="quiz/:sessionId" element={<QuizPage />} />
         <Route path="quiz/:sessionId/result" element={<QuizResultPage />} />
+        <Route path="pet/game" element={<PetGamePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

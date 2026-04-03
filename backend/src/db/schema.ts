@@ -122,6 +122,32 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_quiz_answers_session    ON quiz_answers(session_id);
   `)
 
+  // ── 宠物系统 ──────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pet_status (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id    INTEGER NOT NULL UNIQUE REFERENCES students(id) ON DELETE CASCADE,
+      hunger        INTEGER NOT NULL DEFAULT 80,
+      streak_days   INTEGER NOT NULL DEFAULT 0,
+      last_fed_date INTEGER NOT NULL DEFAULT 0,
+      shield_count  INTEGER NOT NULL DEFAULT 0,
+      snack_count   INTEGER NOT NULL DEFAULT 3,
+      total_fed     INTEGER NOT NULL DEFAULT 0,
+      created_at    INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at    INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+  `)
+
+  // pet_status 扩展列（幂等）
+  const petNewCols: [string, string][] = [
+    ['coins',           'INTEGER NOT NULL DEFAULT 0'],
+    ['mood_boost',      'INTEGER NOT NULL DEFAULT 0'],
+    ['last_game_date',  'INTEGER NOT NULL DEFAULT 0'],
+  ]
+  for (const [col, def] of petNewCols) {
+    try { db.exec(`ALTER TABLE pet_status ADD COLUMN ${col} ${def}`) } catch { /* 列已存在 */ }
+  }
+
   console.log('数据库表结构初始化完成')
 
   // ── items 扩展列（幂等，必须在 CREATE TABLE items 之后）────────────

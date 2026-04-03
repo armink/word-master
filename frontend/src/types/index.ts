@@ -127,3 +127,65 @@ export interface WordbookStats {
   spelling_active: number
   today_correct: number
 }
+
+// ── 宠物系统 ─────────────────────────────────────────────────────
+
+export interface PetStatus {
+  stage: number
+  stage_name: string
+  stage_emoji: string
+  hunger: number
+  mood: number
+  cleanliness: number
+  energy: number
+  streak_days: number
+  shield_count: number
+  snack_count: number
+  coins: number
+  total_fed: number
+  is_sick: boolean
+  speech: string
+  fed_today: boolean
+  played_game_today: boolean
+  can_evolve: boolean
+  next_stage_words: number | null
+  introduced_count: number
+  overdue_count: number
+}
+
+export interface PetFeedResult {
+  success: boolean
+  already_fed: boolean
+  hunger: number
+  streak_days: number
+  coins: number
+  coin_earned?: number
+  streak_bonus?: boolean
+  got_shield?: boolean
+}
+
+export interface ShopItem {
+  id: number
+  name: string
+  emoji: string
+  cost: number
+  hunger: number
+  mood: number
+  desc: string
+}
+
+export interface GameQuestion {
+  index: number
+  english: string
+  options: string[]
+  answer: string
+}
+
+export interface GameResult {
+  success: boolean
+  already_played: boolean
+  correct_count: number
+  coin_earned: number
+  perfect: boolean
+  coins: number
+}

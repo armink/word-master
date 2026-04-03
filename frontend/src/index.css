@@ -8,6 +8,52 @@
   to   { transform: scaleY(1);   opacity: 1;   }
 }
 
+/* 宠物动画 */
+@keyframes petBounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  40%       { transform: translateY(-14px) scale(1.08); }
+  70%       { transform: translateY(-6px) scale(1.04); }
+}
+@keyframes petFloat {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+@keyframes petWobble {
+  0%, 100% { transform: rotate(0deg); }
+  20%       { transform: rotate(-6deg); }
+  60%       { transform: rotate(6deg); }
+}
+@keyframes petShiver {
+  0%, 100% { transform: translateX(0); }
+  20%       { transform: translateX(-4px) rotate(-3deg); }
+  60%       { transform: translateX(4px) rotate(3deg); }
+}
+@keyframes petTap {
+  0%   { transform: translateY(0)    scale(1); }
+  20%  { transform: translateY(-18px) scale(1.18); }
+  50%  { transform: translateY(-24px) scale(1.22); }
+  68%  { transform: translateY(4px)   scale(0.96); }
+  82%  { transform: translateY(-8px)  scale(1.06); }
+  92%  { transform: translateY(2px)   scale(0.99); }
+  100% { transform: translateY(0)    scale(1); }
+}
+@keyframes speechPop {
+  from { transform: scale(0.7) translateY(6px); opacity: 0; }
+  to   { transform: scale(1) translateY(0);     opacity: 1; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-pet-bounce  { animation: petBounce 1.6s ease-in-out infinite; }
+.animate-pet-float   { animation: petFloat  2.4s ease-in-out infinite; }
+.animate-pet-wobble  { animation: petWobble 2s ease-in-out infinite; }
+.animate-pet-shiver  { animation: petShiver 0.4s linear infinite; }
+.animate-pet-tap     { animation: petTap 0.8s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+.animate-speech-pop  { animation: speechPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both; }
+.animate-fade-in     { animation: fadeIn 0.25s ease both; }
+
 @layer base {
   html {
     font-family: 'Inter', system-ui, sans-serif;

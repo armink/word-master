@@ -11,6 +11,7 @@ import sttRouter from './routes/stt'
 import semanticRouter from './routes/semantic'
 import plansRouter from './routes/plans'
 import tasksRouter from './routes/tasks'
+import petRouter from './routes/pet'
 import { warmupSemantic } from './services/semantic'
 
 dotenv.config()
@@ -49,6 +50,7 @@ app.use('/api/stt', sttRouter)
 app.use('/api/semantic', semanticRouter)
 app.use('/api/plans', plansRouter)
 app.use('/api/tasks', tasksRouter)
+app.use('/api/pet', petRouter)
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`后端服务运行在 http://0.0.0.0:${PORT}`)

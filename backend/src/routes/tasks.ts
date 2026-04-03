@@ -46,7 +46,7 @@ function pickQuizType(m: {
 }
 
 /** 构建今日可测词列表（不含 session 创建） */
-function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanRow): { items: TodayTaskItem[]; in_progress_answered: number } {
+function buildTodayItems(studentId: number, wordbookId: number, plan: StudyPlanRow): { items: TodayTaskItem[]; in_progress_answered: number; today_introduced: number } {
   const today = todayInt()
 
   // ── 1. 到期复习词 ───────────────────────────────────────────────

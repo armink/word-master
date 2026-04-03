@@ -3,6 +3,7 @@ import type {
   QuizSessionDetail, QuizAnswer, QuizFinishResult,
   ItemWithMastery, QuizType,
   StudyPlan, TodayTask, PlanSessionDetail, WordbookStats,
+  PetStatus, PetFeedResult,
 } from '@/types'
 
 const BASE = '/api'
@@ -145,3 +146,42 @@ export const startExtraSession = (student_id: number, wordbook_id: number, extra
 
 export const getWordbookStats = (student_id: number, wordbook_id: number) =>
   request<WordbookStats>(`/tasks/stats?student_id=${student_id}&wordbook_id=${wordbook_id}`)
+
+// ── 宠物 ─────────────────────────────────────────────────────────
+
+export const getPetStatus = (student_id: number) =>
+  request<PetStatus>(`/pet/${student_id}`)
+
+export const feedPet = (student_id: number, accuracy?: number) =>
+  request<PetFeedResult>(`/pet/${student_id}/feed`, {
+    method: 'POST',
+    body: JSON.stringify({ accuracy }),
+  })
+
+export const useSnack = (student_id: number) =>
+  request<{ success: boolean; hunger: number; snack_count: number }>(`/pet/${student_id}/snack`, {
+    method: 'POST',
+  })
+
+export const earnSnack = (student_id: number) =>
+  request<{ success: boolean; snack_count: number }>(`/pet/${student_id}/earn-snack`, {
+    method: 'POST',
+  })
+
+export const getShopItems = (student_id: number) =>
+  request<{ items: import('../types').ShopItem[]; coins: number }>(`/pet/${student_id}/shop`)
+
+export const buyShopItem = (student_id: number, item_id: number) =>
+  request<{ success: boolean; item: import('../types').ShopItem; hunger: number; mood_boost: number; coins: number }>(
+    `/pet/${student_id}/shop/buy`,
+    { method: 'POST', body: JSON.stringify({ item_id }) },
+  )
+
+export const getGameWords = (student_id: number) =>
+  request<{ questions: import('../types').GameQuestion[] }>(`/pet/${student_id}/game/words`)
+
+export const submitGameResult = (student_id: number, correct_count: number, total_count: number) =>
+  request<import('../types').GameResult>(`/pet/${student_id}/game/finish`, {
+    method: 'POST',
+    body: JSON.stringify({ correct_count, total_count }),
+  })

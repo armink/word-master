@@ -109,7 +109,7 @@ export default function QuizPage() {
   const totalItems = session?.total_words ?? 0
   const answeredCount = totalItems - queue.length
   const progress = totalItems > 0 ? (answeredCount / totalItems) : 0
-  const realtimeAccuracy = totalItems > 0 ? Math.round((firstCorrectCount / totalItems) * 100) : 0
+  const realtimeAccuracy = answeredCount > 0 ? Math.round((firstCorrectCount / answeredCount) * 100) : 0
 
   // spelling 模式切题后自动 focus
   useEffect(() => {
@@ -258,24 +258,31 @@ export default function QuizPage() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 max-w-md mx-auto relative">
       {/* 顶栏 */}
-      <div className="flex items-center gap-3 px-4 pt-6 pb-2">
-        <button onClick={() => setExitConfirm(true)} className="text-gray-400 text-xl">✕</button>
-        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary-500 rounded-full transition-all duration-500"
-            style={{ width: `${progress * 100}%` }}
-          />
+      <div className="px-4 pt-6 pb-2">
+        {/* 第一行：退出 + 进度条 + 进度计数 */}
+        <div className="flex items-center gap-3">
+          <button onClick={() => setExitConfirm(true)} className="text-gray-400 text-xl">✕</button>
+          <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary-500 rounded-full transition-all duration-500"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+          <span className="text-xs text-gray-500 shrink-0">{answeredCount}/{totalItems}</span>
         </div>
-        <span className="text-xs text-gray-500 shrink-0">{answeredCount}/{totalItems}</span>
-        <span className="text-xs font-medium text-primary-600 shrink-0">{realtimeAccuracy}%</span>
+        {/* 第二行：阶段标签 + 首次正确率 */}
+        <div className="flex items-center justify-between mt-2">
+          <span className="text-xs bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">
+            {quizTypeLabel(currentQuizType)}
+          </span>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-400">首次正确率</span>
+            <span className="text-xs font-semibold text-primary-600">{realtimeAccuracy}%</span>
+          </div>
+        </div>
       </div>
 
-      {/* 阶段标签 */}
-      <div className="px-4 mb-3">
-        <span className="text-xs bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">
-          {quizTypeLabel(currentQuizType)}
-        </span>
-      </div>
+      {/* 阶段标签（已移入顶栏第二行，此处留空占位已删除） */}
 
       {/* 主卡片 */}
       <div className="flex-1 px-4 pb-6">

@@ -155,21 +155,23 @@ router.post('/sessions/:id/finish', (req, res) => {
     return
   }
 
-  // 取每个词条最后一次作答，统计正确率
-  const stats = db.prepare(`
-    SELECT
-      COUNT(*)        AS total,
-      SUM(is_correct) AS correct_count
-    FROM quiz_answers qa
-    WHERE session_id = ?
-      AND attempt = (
-        SELECT MAX(attempt) FROM quiz_answers
-        WHERE session_id = qa.session_id AND item_id = qa.item_id
-      )
-  `).get(req.params.id) as { total: number; correct_count: number }
+  // ── 首次正确率计算 ────────────────────────────────────────────────
+  // 分母：session_items 数量（计划模式，不受中途退出时 total_words 被缩减的影响）
+  //       或 session.total_words（传统单词本模式，创建后不会变化）
+  // 分子：attempt = 1 且答对的词条数（首次即答对）
+  // 注意：掌握度更新仍使用"最后一次作答"（见下方 lastAttempts），两者独立
+  const siCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM session_items WHERE session_id = ?'
+  ).get(req.params.id) as { c: number }).c
+  const total = siCount > 0 ? siCount : (session.total_words ?? 0)
 
-  const total = stats.total ?? 0
-  const correct_count = Number(stats.correct_count ?? 0)
+  const firstAttemptStats = db.prepare(`
+    SELECT COALESCE(SUM(is_correct), 0) AS correct_count
+    FROM quiz_answers
+    WHERE session_id = ? AND attempt = 1
+  `).get(req.params.id) as { correct_count: number }
+
+  const correct_count = Number(firstAttemptStats.correct_count)
   const final_accuracy = total > 0 ? Math.round((correct_count / total) * 100) / 100 : 0
   const passed = final_accuracy >= session.pass_accuracy
   const now = Math.floor(Date.now() / 1000)

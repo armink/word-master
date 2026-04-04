@@ -774,3 +774,91 @@ describe('中途退出再次进入', () => {
     expect(oldSession.status).toBe('abandoned')
   })
 })
+
+// ══════════════════════════════════════════════════════════════════════
+// 9. 首次正确率计算（验证 Bug Fix）
+// ══════════════════════════════════════════════════════════════════════
+describe('首次正确率计算', () => {
+  it('全部首次答对 → final_accuracy = 1.0', async () => {
+    const { sid, wid } = bootstrap(3, 3)
+    const { result } = await runSession(sid, wid)
+    expect(result.final_accuracy).toBe(1)
+    expect(result.passed).toBe(true)
+  })
+
+  it('答错再答对（重试）→ 首次正确率为 0，不因重试而膨胀', async () => {
+    const { sid, wid } = bootstrap(2, 2)
+    const startRes = await apiStartTask(sid, wid)
+    expect(startRes.status).toBe(201)
+    const { session, items } = startRes.body as { session: { id: number }; items: Array<{ id: number }> }
+    // attempt 1: 全部答错
+    for (const item of items) await apiAnswer(session.id, item.id, false)
+    // attempt 2: 全部答对
+    for (const item of items) await apiAnswer(session.id, item.id, true)
+    const res = await apiFinish(session.id)
+    expect(res.status).toBe(200)
+    // 首次均答错 → 首次正确率 = 0/2 = 0
+    expect(res.body.final_accuracy).toBe(0)
+    expect(res.body.passed).toBe(false)
+  })
+
+  it('部分首次答对，部分重试后答对 → 正确率只计首次', async () => {
+    const { sid, wid } = bootstrap(4, 4)
+    const startRes = await apiStartTask(sid, wid)
+    expect(startRes.status).toBe(201)
+    const { session, items } = startRes.body as { session: { id: number }; items: Array<{ id: number }> }
+    // items[0],[1] 首次答对
+    await apiAnswer(session.id, items[0].id, true)
+    await apiAnswer(session.id, items[1].id, true)
+    // items[2],[3] 首次答错，重试答对
+    await apiAnswer(session.id, items[2].id, false)
+    await apiAnswer(session.id, items[3].id, false)
+    await apiAnswer(session.id, items[2].id, true)
+    await apiAnswer(session.id, items[3].id, true)
+    const res = await apiFinish(session.id)
+    expect(res.status).toBe(200)
+    // 4词中2词首次答对 → 2/4 = 0.5
+    expect(res.body.final_accuracy).toBe(0.5)
+    expect(res.body.total_words).toBe(4)
+  })
+
+  it('中途放弃（部分词未作答）→ 分母为 session_items 总数，正确率不虚高', async () => {
+    // 5词计划session，只答前3个（全部首次答对），直接finish
+    const sid = createStudent()
+    const wid = createWordbook()
+    for (let i = 0; i < 5; i++) addItemToWordbook(wid, createItem(`w${i}`, `词${i}`), i)
+    createPlan(sid, wid, 5)
+    const startRes = await apiStartTask(sid, wid)
+    expect(startRes.status).toBe(201)
+    const { session, items } = startRes.body as { session: { id: number }; items: Array<{ id: number }> }
+    expect(items.length).toBe(5)
+    // 只答前3个
+    await apiAnswer(session.id, items[0].id, true)
+    await apiAnswer(session.id, items[1].id, true)
+    await apiAnswer(session.id, items[2].id, true)
+    const res = await apiFinish(session.id)
+    expect(res.status).toBe(200)
+    // 分母 = session_items = 5，分子 = 3（首次答对）
+    expect(res.body.total_words).toBe(5)
+    expect(res.body.final_accuracy).toBe(0.6)
+    expect(res.body.final_accuracy).toBeLessThanOrEqual(1.0)
+  })
+
+  it('中途退出再进入 → final_accuracy 不超过 1.0（分母用 session_items 总数）', async () => {
+    const { sid, wid } = bootstrap(4, 4)
+    // 第一次：答对所有4词但不 finish（模拟中途退出）
+    const first = await apiStartTask(sid, wid)
+    expect(first.status).toBe(201)
+    const { session, items } = first.body as { session: { id: number }; items: Array<{ id: number }> }
+    for (const item of items) await apiAnswer(session.id, item.id, true)
+    // 第二次进入：触发补偿，total_words 更新为 0（全部已答对）
+    const second = await apiStartTask(sid, wid)
+    expect(second.status).toBe(200)
+    // 直接 finish 当前 session（回收原 session id）
+    const res = await apiFinish(session.id)
+    expect(res.status).toBe(200)
+    // session_items = 4，首次答对 = 4 → 1.0，不超过 100%
+    expect(res.body.final_accuracy).toBeLessThanOrEqual(1.0)
+    expect(res.body.total_words).toBe(4)
+  })
+})

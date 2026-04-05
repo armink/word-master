@@ -5,6 +5,14 @@ import { nextReviewDate, todayInt } from './tasks'
 
 const router = Router()
 
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
 // POST /api/quiz/sessions
 // Body: { student_id, wordbook_id, quiz_type }
 router.post('/sessions', (req, res) => {
@@ -82,6 +90,7 @@ router.get('/sessions/:id', (req, res) => {
       if (correctIds.size > 0) {
         sessionItems = sessionItems.filter(item => !correctIds.has(item.id))
       }
+      sessionItems = shuffle(sessionItems)
     }
     res.json({ ...session, items: sessionItems })
     return
@@ -104,7 +113,7 @@ router.get('/sessions/:id', (req, res) => {
         ORDER BY wi.sort_order ASC, i.id ASC
       `).all(session.wordbook_id)
 
-  res.json({ ...session, items })
+  res.json({ ...session, items: session.status === 'in_progress' ? shuffle(items as any[]) : items })
 })
 
 // POST /api/quiz/sessions/:id/answers

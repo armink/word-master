@@ -110,6 +110,12 @@ export const checkSemantic = (standard: string, answer: string) =>
     body: JSON.stringify({ standard, answer }),
   })
 
+export const checkEnglish = (standard: string, answer: string) =>
+  request<{ match: boolean }>('/semantic/check-english', {
+    method: 'POST',
+    body: JSON.stringify({ standard, answer }),
+  })
+
 // ── 学习计划 ──────────────────────────────────────────────────────
 
 export const getPlan = (student_id: number, wordbook_id: number) =>

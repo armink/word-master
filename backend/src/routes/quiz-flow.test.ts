@@ -627,7 +627,7 @@ describe('中途退出再次进入', () => {
   })
 
   it('中途退出（部分答对，未 finish）→ 再次 start 返回剩余词', async () => {
-    const { sid, wid, itemIds } = bootstrap(4, 4)
+    const { sid, wid } = bootstrap(4, 4)
     const first = await apiStartTask(sid, wid)
     const { session, items } = first.body as { session: { id: number }; items: Array<{ id: number }> }
 
@@ -685,7 +685,7 @@ describe('中途退出再次进入', () => {
   })
 
   it('中途退出（部分答对）→ today.new_count 排除已答对词，不重复计入', async () => {
-    const { sid, wid, itemIds } = bootstrap(5, 5)
+    const { sid, wid } = bootstrap(5, 5)
     const first = await apiStartTask(sid, wid)
     const { session, items } = first.body as { session: { id: number }; items: Array<{ id: number }> }
 

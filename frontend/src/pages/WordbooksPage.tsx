@@ -18,7 +18,6 @@ export default function WordbooksPage() {
   // 长按删除相关
   const [menuWb, setMenuWb] = useState<Wordbook | null>(null)       // 长按弹出的操作菜单
   const [confirmWb, setConfirmWb] = useState<Wordbook | null>(null) // 二次确认删除
-  const [confirmHasData, setConfirmHasData] = useState(false)       // 是否有学习数据
   const [deleting, setDeleting] = useState(false)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // 记录是否触发了长按菜单，用于 onTouchEnd 判断是否应该导航
@@ -86,7 +85,6 @@ export default function WordbooksPage() {
         setWordbooks(prev => prev.filter(w => w.id !== wb.id))
         if (currentWb?.id === wb.id) setWordbook(null)
       } else if (result.has_data) {
-        setConfirmHasData(true)
         setConfirmWb(wb)
       }
     } catch (e) {

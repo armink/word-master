@@ -65,7 +65,7 @@ export default function HomePage() {
     setStarting(true)
     try {
       const session = await startTodaySession(student.id, currentWb.id)
-      navigate(`/quiz/${session.id}`)
+      navigate(`/quiz/${session.session.id}`)
     } catch (e) {
       setStarting(false)
     }

@@ -1,4 +1,5 @@
 import { pipeline, cos_sim, env } from '@xenova/transformers'
+import { pinyin } from 'pinyin-pro'
 
 // 优先使用国内镜像，避免 huggingface.co 无法访问
 env.remoteHost = 'https://hf-mirror.com'
@@ -58,6 +59,11 @@ function normalizeText(s: string): string {
   return s.trim().toLowerCase().replace(/[，。！？、；：\s]/g, '')
 }
 
+/** 将中文文本转为无声调拼音串，用于同音字比较 */
+function toPinyinNoTone(s: string): string {
+  return pinyin(s, { toneType: 'none', separator: '' }).toLowerCase().replace(/\s/g, '')
+}
+
 /**
  * 三阶段混合语义匹配：
  * 1. 精确匹配（去标点/空格） → 即时
@@ -69,13 +75,18 @@ function normalizeText(s: string): string {
 export async function checkSemanticMatch(
   standard: string,
   userAnswer: string,
-): Promise<{ match: boolean; score: number; method: 'exact' | 'keyword' | 'semantic' }> {
+): Promise<{ match: boolean; score: number; method: 'exact' | 'pinyin' | 'keyword' | 'semantic' }> {
   const normStd = normalizeText(standard)
   const normAns = normalizeText(userAnswer)
 
   // Stage 1: 精确匹配
   if (normStd === normAns) {
     return { match: true, score: 1.0, method: 'exact' }
+  }
+
+  // Stage 1.5: 同音字匹配（无声调拼音相同视为正确）
+  if (normStd.length > 0 && toPinyinNoTone(normStd) === toPinyinNoTone(normAns)) {
+    return { match: true, score: 0.95, method: 'pinyin' }
   }
 
   // Stage 2: 关键词包含

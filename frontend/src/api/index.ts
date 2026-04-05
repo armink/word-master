@@ -104,13 +104,15 @@ export const getRecords = (student_id: number, wordbook_id?: number) => {
 }
 
 // ---- Semantic ----
-export const checkSemantic = (standard: string, answer: string) =>
-  request<{ match: boolean; score: number; method: string }>('/semantic/check', {
+/** 英→中：校验用户输入的中文答案（语义匹配） */
+export const checkChineseAnswer = (standard: string, answer: string) =>
+  request<{ match: boolean; score: number; method: string }>('/semantic/check-chinese', {
     method: 'POST',
     body: JSON.stringify({ standard, answer }),
   })
 
-export const checkEnglish = (standard: string, answer: string) =>
+/** 中→英 / 拼写：校验用户输入的英文答案（缩写展开 + 斜杠备选） */
+export const checkEnglishAnswer = (standard: string, answer: string) =>
   request<{ match: boolean }>('/semantic/check-english', {
     method: 'POST',
     body: JSON.stringify({ standard, answer }),

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getQuizSession, submitAnswer, finishSession, checkSemantic, checkEnglish } from '@/api'
+import { getQuizSession, submitAnswer, finishSession, checkChineseAnswer, checkEnglishAnswer } from '@/api'
 import type { Item, QuizSessionDetail, QuizType } from '@/types'
 import TtsButton from '@/components/TtsButton'
 import VoiceInput from '@/components/VoiceInput'
@@ -13,14 +13,14 @@ async function checkAnswer(item: Item, quizType: QuizType, answer: string): Prom
   if (!a) return false
   if (quizType === 'en_to_zh') {
     try {
-      const result = await checkSemantic(item.chinese, a)
+      const result = await checkChineseAnswer(item.chinese, a)
       return result.match
     } catch {
       return a.toLowerCase() === item.chinese.trim().toLowerCase()
     }
   }
   try {
-    const result = await checkEnglish(item.english, a)
+    const result = await checkEnglishAnswer(item.english, a)
     return result.match
   } catch {
     return a.toLowerCase() === item.english.trim().toLowerCase()

@@ -1,10 +1,42 @@
 /**
  * semantic 路由测试
- * 覆盖：POST /api/semantic/check-english
+ * 覆盖：POST /api/semantic/check-chinese、POST /api/semantic/check-english
  */
 import { describe, it, expect } from 'vitest'
 import request from 'supertest'
 import app from '../app'
+
+describe('POST /api/semantic/check-chinese', () => {
+  it('缺少 standard 返回 400', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ answer: '节食' })
+    expect(res.status).toBe(400)
+  })
+
+  it('缺少 answer 返回 400', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '节食' })
+    expect(res.status).toBe(400)
+  })
+
+  it('精确匹配返回 match: true', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '节食', answer: '节食' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(true)
+  })
+
+  it('完全不相关返回 match: false', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '节食', answer: '苹果' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(false)
+  })
+})
 
 describe('POST /api/semantic/check-english', () => {
   it('缺少 standard 返回 400', async () => {

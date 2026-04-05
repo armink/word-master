@@ -1,0 +1,28 @@
+services:
+  app:
+    # 使用 GitHub Actions 预构建的镜像，无需本地编译
+    image: ghcr.io/armink/word-master:latest
+    # 开发者本地构建时，注释掉上方 image，取消注释下方 build
+    # build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # SQLite 数据持久化
+      - sqlite-data:/app/data
+      # 语义模型缓存（首次启动会自动下载，~85MB）
+      - model-cache:/app/.cache
+    environment:
+      - NODE_ENV=production
+      # 语义模型缓存目录（固定路径，不依赖运行用户）
+      - TRANSFORMERS_CACHE=/app/.cache
+      # 讯飞语音（STT / TTS）
+      - XUNFEI_APP_ID=${XUNFEI_APP_ID:-}
+      - XUNFEI_API_KEY=${XUNFEI_API_KEY:-}
+      - XUNFEI_API_SECRET=${XUNFEI_API_SECRET:-}
+      # DeepSeek AI 例句生成（可选）
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  sqlite-data:
+  model-cache:

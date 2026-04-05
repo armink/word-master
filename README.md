@@ -114,118 +114,91 @@ Web H5，手机浏览器即可访问，无需下载 App。
 
 ---
 
-## 快速开始
+## Docker 部署
 
 ### 环境要求
 
-- Node.js 20+
-- npm 10+
+- Docker 20.10+
+- Docker Compose v2（`docker compose` 命令）
 
-### 安装依赖
+### 快速部署（无需克隆仓库）
+
+只需两个文件即可部署，镜像由 GitHub Actions 自动构建：
 
 ```bash
-# 后端
-cd backend
-npm install
+# 下载配置文件
+curl -o docker-compose.yml https://raw.githubusercontent.com/armink/word-master/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/armink/word-master/main/backend/.env.example
 
-# 前端
-cd ../frontend
-npm install
+# 按需编辑 .env 填入讯飞 API Key（可选，不填语音功能不可用）
+# nano .env
+
+# 启动
+docker compose up -d
 ```
+
+启动完成后访问 `http://服务器IP:3000` 即可使用。首次启动会自动下载语义模型（~85MB），稍候片刻即可正常使用。
 
 ### 配置环境变量
 
-```bash
-cp backend/.env.example backend/.env
-```
-
-编辑 `backend/.env`：
+编辑 `.env` 文件：
 
 ```env
-# 讯飞语音（STT / TTS）
+# 讯飞语音（STT / TTS）— 不配置则语音功能不可用，其余功能正常
 XUNFEI_APP_ID=你的AppID
 XUNFEI_API_KEY=你的APIKey
 XUNFEI_API_SECRET=你的APISecret
 
-# DeepSeek（AI 例句生成，可选）
+# DeepSeek（AI 例句生成）— 可选
 DEEPSEEK_API_KEY=你的APIKey
-
-# 数据库路径（默认 backend/data/word-test.db）
-# DB_PATH=./data/word-test.db
 ```
 
-> 讯飞语音功能非必须，不配置时语音输入和朗读功能不可用，其余功能正常使用。
+讯飞 API 申请地址：[https://www.xfyun.cn](https://www.xfyun.cn)
 
-### 启动开发服务
+### 数据持久化
+
+用户数据（词本、学习记录）和语义模型缓存存储在 Docker 管理的卷中，重启、重建容器后数据不会丢失：
 
 ```bash
-# 根目录，同时启动前后端（需要 concurrently）
-npm run dev
+# 查看数据实际存储位置
+docker volume inspect word-master_sqlite-data
 
-# 或分别启动
-cd backend && npm run dev   # 后端 :3000
-cd frontend && npm run dev  # 前端 :5173
+# 备份数据库
+docker run --rm \
+  -v word-master_sqlite-data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/word-master-backup.tar.gz /data
 ```
 
-### 导入词表
+### 常用运维命令
 
-在 `单词本` 页面点击 `+` 导入 `.txt` 文件，格式：
+```bash
+# 停止服务
+docker compose down
 
+# 更新到最新版本（拉取最新镜像，无需重新构建）
+docker compose pull
+docker compose up -d
+
+# 查看运行状态
+docker compose ps
+
+# 查看实时日志
+docker compose logs -f app
 ```
-apple 苹果
-banana 香蕉
-have a good time 玩得开心
-```
 
-每行一个词条，英文与中文之间用空格分隔。
+> ⚠️ **不要使用 `docker compose down -v`**，`-v` 参数会同时删除数据卷，导致所有学习数据丢失。
 
 ---
 
-## 项目结构
+## 本地开发
 
-```
-word-test/
-├── backend/                # Express API 服务
-│   ├── src/
-│   │   ├── routes/         # API 路由（tasks, quiz, pet, tts, stt…）
-│   │   ├── services/       # 业务服务（语音、语义、AI）
-│   │   └── db/             # 数据库 schema 和客户端
-│   ├── scripts/            # 工具脚本（导入词表、生成例句…）
-│   └── vitest.config.ts    # 测试配置
-├── frontend/               # React 单页应用
-│   └── src/
-│       ├── pages/          # 页面组件
-│       ├── components/     # 通用组件
-│       └── hooks/          # 数据 hooks
-├── docs/                   # 设计文档
-└── .github/
-    └── prompts/            # Copilot 工作流 prompt（bugfix 等）
-```
+想要修改源码、参与贡献或在本地运行？请参阅 [开发指南](docs/development.md)，涵盖：
 
----
-
-## 测试
-
-```bash
-cd backend
-
-# 运行所有测试
-npm test
-
-# 监听模式（开发时）
-npm run test:watch
-
-# 生成覆盖率报告
-npm run test:coverage
-```
-
-测试覆盖核心业务逻辑：
-
-- 艾宾浩斯间隔计算
-- 今日任务统计（新词 / 复习词 / 剩余配额）
-- 计划 Session 完整流程（开始 → 答题 → 完成 → 掌握度写入）
-- 中途退出再进入的补偿逻辑
-- 首次正确率计算
+- 环境安装与启动
+- 词表导入格式
+- 项目结构说明
+- 测试与覆盖率
 
 ---
 

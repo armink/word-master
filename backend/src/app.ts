@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import path from 'path'
 import { initSchema } from './db/schema'
 import studentsRouter from './routes/students'
 import wordbooksRouter from './routes/wordbooks'
@@ -19,7 +20,12 @@ const app = express()
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):5173$/.test(origin)) {
+    const extra = process.env.CORS_ORIGIN
+    if (
+      !origin ||
+      (extra && origin === extra) ||
+      /^https?:\/\/(localhost|127\.0\.0\.1|\d+\.\d+\.\d+\.\d+):5173$/.test(origin)
+    ) {
       cb(null, true)
     } else {
       cb(new Error('Not allowed by CORS'))
@@ -46,5 +52,14 @@ app.use('/api/semantic', semanticRouter)
 app.use('/api/plans', plansRouter)
 app.use('/api/tasks', tasksRouter)
 app.use('/api/pet', petRouter)
+
+// 生产模式：托管前端构建产物，所有非 /api 请求返回 index.html（SPA fallback）
+if (process.env.NODE_ENV === 'production') {
+  const frontendDist = path.resolve(__dirname, '../frontend-dist')
+  app.use(express.static(frontendDist))
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'))
+  })
+}
 
 export default app

@@ -8,6 +8,8 @@ build/
 # 测试覆盖率报告（构建产物，不提交）
 backend/coverage/
 frontend/coverage/
+backend/test-results/
+frontend/tsconfig.tsbuildinfo
 
 # 环境变量（含密钥，不提交）
 .env

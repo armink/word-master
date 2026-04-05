@@ -17,6 +17,10 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     exclude: ['src/services/semantic.test.ts'],
 
+    // CI 同时输出 JUnit XML，供 GitHub Actions Test Summary 展示
+    reporters: process.env.CI ? ['default', 'junit'] : ['default'],
+    outputFile: { junit: './test-results/junit.xml' },
+
     coverage: {
       provider: 'v8',
       // 终端摘要 + HTML 可视化报告 + lcov（可接入 CI/IDE 插件）

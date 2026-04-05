@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # 前端：类型检查 + 构建
+  # ─────────────────────────────────────────────────────────────
+  frontend:
+    name: 前端类型检查 & 构建
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript 类型检查
+        working-directory: frontend
+        run: npx tsc -b --noEmit
+
+      - name: Vite 构建
+        working-directory: frontend
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────
+  # 后端：类型检查 + 单元测试（含覆盖率）+ 构建
+  # ─────────────────────────────────────────────────────────────
+  backend:
+    name: 后端类型检查 & 测试 & 构建
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write   # dorny/test-reporter 写入 Check Run 需要此权限
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: 安装依赖
+        working-directory: backend
+        run: npm ci
+
+      - name: TypeScript 类型检查
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      - name: 运行测试（含覆盖率）
+        working-directory: backend
+        run: npm run test:coverage
+        env:
+          DB_PATH: ':memory:'
+          CI: 'true'
+
+      - name: 发布测试结果到 GitHub
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Vitest 测试报告
+          path: backend/test-results/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: 上传覆盖率报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: backend/coverage/
+          retention-days: 7
+
+      - name: 后端编译
+        working-directory: backend
+        run: npm run build
+
+  # ─────────────────────────────────────────────────────────────
+  # Docker 镜像构建验证（不推送，仅验证 Dockerfile 正确性）
+  # ─────────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker 构建验证
+    runs-on: ubuntu-latest
+    # 前两个 job 通过后再验证 Docker，避免已知错误叠加
+    needs: [frontend, backend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像（不推送）
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,12 +1,16 @@
 name: 构建并发布 Docker 镜像
 
 on:
+  # main 分支：等 CI workflow 全部通过后才触发
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+  # tag 推送（发版）和手动触发：直接执行，不依赖 CI workflow
   push:
-    branches:
-      - main
     tags:
-      - 'v*'          # 推送 v1.0.0 这类 tag 时触发
-  workflow_dispatch:  # 支持手动触发
+      - 'v*'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -14,7 +18,10 @@ env:
 
 jobs:
   build-and-push:
+    name: 构建并推送 Docker 镜像
     runs-on: ubuntu-latest
+    # workflow_run 触发时：仅 CI 成功才继续；tag/手动触发时：直接执行
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write   # 推送到 ghcr.io 需要此权限

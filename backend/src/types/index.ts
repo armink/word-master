@@ -51,14 +51,42 @@ export interface StudentMasteryRow {
   en_to_zh_next: number     // YYYYMMDD 下次复习, 0 = 未解锁
   zh_to_en_next: number
   spelling_next: number
+  // 错误权重：答错 +1.0（上限5），答对 ×0.6；影响复习间隔
+  // 实际间隔 = max(1, floor(base_days × e^(-0.35 × weight)))
+  error_weight: number
+}
+
+/** 预测曲线单日数据 */
+export interface ForecastDay {
+  date: number          // YYYYMMDD
+  review_count: number  // 预计复习词数
+  new_count: number     // 预计新词数
+  total: number
+  is_over_peak: boolean // 复习词数超出每日峰值
+  is_future: boolean    // true=预测，false=历史实际
+}
+
+/** GET /api/tasks/forecast 响应 */
+export interface Forecast {
+  history: ForecastDay[]
+  forecast: ForecastDay[]
+  total_unintroduced: number
+  remaining_days: number
+  daily_peak: number
+  projected_completion_date: number | null  // YYYYMMDD，预测完成日
 }
 
 export interface StudyPlanRow {
   id: number
   student_id: number
   wordbook_id: number
-  daily_new: number
-  start_date: number        // YYYYMMDD
+  daily_new: number           // legacy，保留兼容旧数据
+  remaining_days: number      // 剩余计划天数（每次完成打卡 -1）
+  daily_peak: number          // 每日任务上限（复习+新词合计）
+  completed_days: number      // 累计完成打卡天数
+  last_completed_date: number // 上次完成打卡 YYYYMMDD
+  target_level: number        // 1=英译中, 2=+中译英, 3=+拼写（控制解锁链上限）
+  start_date: number          // YYYYMMDD
   status: PlanStatus
   created_at: number
   updated_at: number

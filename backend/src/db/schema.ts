@@ -39,9 +39,28 @@ export function initSchema() {
     ['en_to_zh_next',   'INTEGER NOT NULL DEFAULT 0'],
     ['zh_to_en_next',   'INTEGER NOT NULL DEFAULT 0'],
     ['spelling_next',   'INTEGER NOT NULL DEFAULT 0'],
+    // 错误权重：答错 +1（上限5），答对 ×0.6；用于压缩复习间隔
+    ['error_weight',    'REAL NOT NULL DEFAULT 0'],
   ]
   for (const [col, def] of masteryNewCols) {
     try { db.exec(`ALTER TABLE student_mastery ADD COLUMN ${col} ${def}`) } catch { /* 列已存在 */ }
+  }
+
+  // ── study_plans 扩展列（幂等）────────────────────────────────────
+  // remaining_days：用户设定的剩余计划天数（每次完成打卡自动 -1）
+  // daily_peak   ：每日任务上限（复习 + 新词合计，默认 50）
+  // completed_days：已完成打卡的天数（用于展示）
+  // last_completed_date：上次完成打卡的 YYYYMMDD（防止同天重复计入）
+  const planNewCols: [string, string][] = [
+    ['remaining_days',      'INTEGER NOT NULL DEFAULT 30'],
+    ['daily_peak',          'INTEGER NOT NULL DEFAULT 50'],
+    ['completed_days',      'INTEGER NOT NULL DEFAULT 0'],
+    ['last_completed_date', 'INTEGER NOT NULL DEFAULT 0'],
+    // 学习目标层级：1=英译中，2=英译中+中译英，3=全三关含拼写（默认）
+    ['target_level',        'INTEGER NOT NULL DEFAULT 3'],
+  ]
+  for (const [col, def] of planNewCols) {
+    try { db.exec(`ALTER TABLE study_plans ADD COLUMN ${col} ${def}`) } catch { /* 列已存在 */ }
   }
 
   db.exec(`

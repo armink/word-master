@@ -4,6 +4,7 @@ import type {
   ItemWithMastery, QuizType,
   StudyPlan, TodayTask, PlanSessionDetail, WordbookStats,
   PetStatus, PetFeedResult,
+  Forecast,
 } from '@/types'
 
 const BASE = '/api'
@@ -123,13 +124,13 @@ export const checkEnglishAnswer = (standard: string, answer: string) =>
 export const getPlan = (student_id: number, wordbook_id: number) =>
   request<StudyPlan>(`/plans?student_id=${student_id}&wordbook_id=${wordbook_id}`)
 
-export const createPlan = (student_id: number, wordbook_id: number, daily_new: number) =>
+export const createPlan = (student_id: number, wordbook_id: number, remaining_days: number, daily_peak?: number, target_level?: number) =>
   request<StudyPlan>('/plans', {
     method: 'POST',
-    body: JSON.stringify({ student_id, wordbook_id, daily_new }),
+    body: JSON.stringify({ student_id, wordbook_id, remaining_days, daily_peak, target_level }),
   })
 
-export const patchPlan = (id: number, data: { daily_new?: number; status?: string }) =>
+export const patchPlan = (id: number, data: { remaining_days?: number; daily_peak?: number; status?: string; target_level?: number }) =>
   request<StudyPlan>(`/plans/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(data),
@@ -139,6 +140,23 @@ export const patchPlan = (id: number, data: { daily_new?: number; status?: strin
 
 export const getTodayTask = (student_id: number, wordbook_id: number) =>
   request<TodayTask>(`/tasks/today?student_id=${student_id}&wordbook_id=${wordbook_id}`)
+
+export const getForecast = (
+  student_id: number,
+  wordbook_id: number,
+  options?: { preview_remaining_days?: number; preview_daily_peak?: number },
+) => {
+  const params = new URLSearchParams({ student_id: String(student_id), wordbook_id: String(wordbook_id) })
+  if (options?.preview_remaining_days != null) params.set('preview_remaining_days', String(options.preview_remaining_days))
+  if (options?.preview_daily_peak != null) params.set('preview_daily_peak', String(options.preview_daily_peak))
+  return request<Forecast>(`/tasks/forecast?${params}`)
+}
+
+export const completeTodayTask = (student_id: number, wordbook_id: number) =>
+  request<{ ok: boolean; remaining_days: number; completed_days: number }>('/tasks/complete', {
+    method: 'POST',
+    body: JSON.stringify({ student_id, wordbook_id }),
+  })
 
 export const startTodaySession = (student_id: number, wordbook_id: number) =>
   request<PlanSessionDetail>('/tasks/start', {

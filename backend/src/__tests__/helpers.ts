@@ -56,15 +56,18 @@ export function addItemToWordbook(wordbookId: number, itemId: number, sortOrder 
   db.prepare('INSERT INTO wordbook_items (wordbook_id, item_id, sort_order) VALUES (?, ?, ?)').run(wordbookId, itemId, sortOrder)
 }
 
-/** 快速创建激活的学习计划，返回 id */
-export function createPlan(studentId: number, wordbookId: number, dailyNew = 5): number {
+/** 快速创建激活的学习计划，返回 id
+ *  remainingDays: 计划剩余天数（默认 1 → 所有词当天全出）
+ *  targetLevel:   目标层级 1/2/3（默认 3）
+ */
+export function createPlan(studentId: number, wordbookId: number, remainingDays = 1, targetLevel = 3): number {
   const d = new Date()
   const startDate = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
   return Number(
     db.prepare(`
-      INSERT INTO study_plans (student_id, wordbook_id, daily_new, start_date, status)
-      VALUES (?, ?, ?, ?, 'active')
-    `).run(studentId, wordbookId, dailyNew, startDate).lastInsertRowid
+      INSERT INTO study_plans (student_id, wordbook_id, daily_new, remaining_days, target_level, start_date, status)
+      VALUES (?, ?, 5, ?, ?, ?, 'active')
+    `).run(studentId, wordbookId, remainingDays, targetLevel, startDate).lastInsertRowid
   )
 }
 

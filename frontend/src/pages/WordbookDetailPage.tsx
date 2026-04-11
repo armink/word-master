@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getWordbookDetail, importWords, exportWordbook, getPlan, createPlan, patchPlan } from '@/api'
+import { getWordbookDetail, importWords, exportWordbook, getPlan, createPlan, patchPlan, getForecast } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
-import type { WordbookDetail, Item, StudyPlan } from '@/types'
+import type { WordbookDetail, Item, StudyPlan, Forecast } from '@/types'
+import LearningForecastChart from '@/components/LearningForecastChart'
 
 export default function WordbookDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,10 +20,14 @@ export default function WordbookDetailPage() {
   // ── 学习计划 ─────────────────────────────────────────
   const [plan, setPlan] = useState<StudyPlan | null | undefined>(undefined)  // undefined=加载中
   const [showPlanSheet, setShowPlanSheet] = useState(false)
-  const [dailyNew, setDailyNew] = useState(10)
+  const [remainingDays, setRemainingDays] = useState(30)
+  const [dailyPeak, setDailyPeak] = useState(50)
+  const [targetLevel, setTargetLevel] = useState(3)
   const [planSaving, setPlanSaving] = useState(false)
   const [planError, setPlanError] = useState('')
-  const sliderRef = useRef<HTMLDivElement>(null)
+  const [forecast, setForecast] = useState<Forecast | null>(null)
+  // forecastStale: 参数已变更、等待新数据；保留旧图表，仅降低透明度
+  const [forecastStale, setForecastStale] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -35,9 +40,24 @@ export default function WordbookDetailPage() {
   useEffect(() => {
     if (!id || !student) return
     getPlan(student.id, Number(id))
-      .then(p => { setPlan(p); setDailyNew(p.daily_new) })
+      .then(p => { setPlan(p); setRemainingDays(p.remaining_days); setDailyPeak(p.daily_peak); setTargetLevel(p.target_level ?? 3) })
       .catch(() => setPlan(null))
   }, [id, student])
+
+  // 预测图表：参数变化时标记"过期"，防抖 600ms 后发请求，新数据到达前保留旧图降低透明度
+  useEffect(() => {
+    if (!showPlanSheet || !id || !student) return
+    setForecastStale(true)
+    const timer = setTimeout(() => {
+      getForecast(student.id, Number(id), {
+        preview_remaining_days: remainingDays,
+        preview_daily_peak: dailyPeak,
+      })
+        .then(data => { setForecast(data); setForecastStale(false) })
+        .catch(() => setForecastStale(false))
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [showPlanSheet, id, student, remainingDays, dailyPeak])
 
   const handleImport = async () => {
     if (!importText.trim() || !id) return
@@ -62,10 +82,10 @@ export default function WordbookDetailPage() {
     setPlanError('')
     try {
       if (plan) {
-        const updated = await patchPlan(plan.id, { daily_new: dailyNew, status: 'active' })
+        const updated = await patchPlan(plan.id, { remaining_days: remainingDays, daily_peak: dailyPeak, status: 'active', target_level: targetLevel })
         setPlan(updated)
       } else {
-        const created = await createPlan(student.id, Number(id), dailyNew)
+        const created = await createPlan(student.id, Number(id), remainingDays, dailyPeak, targetLevel)
         setPlan(created)
       }
       setShowPlanSheet(false)
@@ -102,16 +122,7 @@ export default function WordbookDetailPage() {
   if (!wordbook) return null
 
   const totalItems = wordbook.items.length
-  const estimateDays = dailyNew > 0 ? Math.ceil(totalItems / dailyNew) : '–'
-  const sliderMax = Math.min(50, totalItems)
 
-  const calcSliderValue = (clientX: number) => {
-    const el = sliderRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    setDailyNew(Math.max(1, Math.round(1 + ratio * (sliderMax - 1))))
-  }
 
   return (
     <div className="p-4 pb-32">
@@ -173,7 +184,7 @@ export default function WordbookDetailPage() {
               bg-primary-600 text-white active:opacity-80"
           >
             {plan
-              ? `📅 学习计划：每天 ${plan.daily_new} 词（点击修改）`
+              ? `📅 学习计划：剩余 ${plan.remaining_days} 天（点击修改）`
               : '制定学习计划'}
           </button>
         </div>
@@ -182,53 +193,111 @@ export default function WordbookDetailPage() {
       {/* 制定/修改计划 Sheet */}
       {showPlanSheet && (
         <div className="fixed inset-0 bg-black/40 flex items-end z-50">
-          <div className="bg-white w-full rounded-t-3xl p-6 pb-10">
+          <div className="bg-white w-full rounded-t-3xl p-6 pb-10 overflow-y-auto max-h-[90vh]">
             <h2 className="text-lg font-bold mb-4">
               {plan ? '修改学习计划' : '制定学习计划'}
             </h2>
 
-            <div className="mb-4">
-              <label className="block text-sm text-gray-600 mb-2">
-                每日新词数
-                <span className="ml-2 text-2xl font-bold text-primary-600">{dailyNew}</span>
-                <span className="text-xs text-gray-400 ml-1">词</span>
-              </label>
-              {/* 自定义滑块：Pointer Events + setPointerCapture，保证移动端可拖拽 */}
-              <div
-                ref={sliderRef}
-                className="relative h-8 flex items-center cursor-pointer select-none"
-                style={{ touchAction: 'none' }}
-                onPointerDown={e => {
-                  e.currentTarget.setPointerCapture(e.pointerId)
-                  calcSliderValue(e.clientX)
-                }}
-                onPointerMove={e => {
-                  if (e.buttons === 0) return
-                  calcSliderValue(e.clientX)
-                }}
-              >
-                {/* 轨道背景 */}
-                <div className="absolute w-full h-2 bg-gray-200 rounded-full" />
-                {/* 已填充部分 */}
-                <div
-                  className="absolute h-2 bg-primary-400 rounded-full"
-                  style={{ width: `${((dailyNew - 1) / Math.max(1, sliderMax - 1)) * 100}%` }}
-                />
-                {/* 滑块圆点 */}
-                <div
-                  className="absolute w-6 h-6 bg-white border-2 border-primary-500 rounded-full shadow-md"
-                  style={{ left: `calc(${((dailyNew - 1) / Math.max(1, sliderMax - 1)) * 100}% - 12px)` }}
-                />
-              </div>
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>1</span>
-                <span>{sliderMax}</span>
+            {/* 学习目标 */}
+            <div className="mb-5">
+              <p className="text-sm text-gray-600 mb-2">学习目标</p>
+              <div className="flex gap-2">
+                {[
+                  { level: 1, label: '认识', desc: '英译中' },
+                  { level: 2, label: '能说', desc: '英译中 + 中译英' },
+                  { level: 3, label: '会写', desc: '含拼写' },
+                ].map(opt => (
+                  <button
+                    key={opt.level}
+                    onClick={() => setTargetLevel(opt.level)}
+                    className={`flex-1 rounded-xl border-2 py-2.5 px-1 text-center transition-colors ${
+                      targetLevel === opt.level
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 text-gray-500'
+                    }`}
+                  >
+                    <div className="font-semibold text-sm">{opt.label}</div>
+                    <div className="text-xs mt-0.5 leading-tight text-gray-400">{opt.desc}</div>
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="bg-primary-50 rounded-xl p-3 mb-5 text-sm text-primary-700">
-              共 <span className="font-bold">{totalItems}</span> 个词条，
-              预计大约 <span className="font-bold">{estimateDays}</span> 天完成
+            {/* 几天背完 */}
+            <div className="mb-5">
+              <div className="flex items-baseline justify-between mb-2">
+                <label className="text-sm text-gray-600">几天背完？</label>
+                <span className="text-2xl font-bold text-primary-600">
+                  {remainingDays} <span className="text-sm font-normal text-gray-400">天</span>
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={Math.max(60, remainingDays)}
+                step={1}
+                value={remainingDays}
+                onChange={e => setRemainingDays(Number(e.target.value))}
+                className="w-full accent-primary-500 cursor-pointer h-2"
+                style={{ touchAction: 'none' }}
+              />
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <span>1天</span>
+                <span className="text-gray-500">
+                  每天约 <span className="font-medium text-primary-500">{Math.ceil(totalItems / Math.max(1, remainingDays))}</span> 新词
+                </span>
+                <span>{Math.max(60, remainingDays)}天</span>
+              </div>
+            </div>
+
+            {/* 每日上限 */}
+            <div className="mb-5">
+              <div className="flex items-baseline justify-between mb-2">
+                <label className="text-sm text-gray-600">每日上限（含复习）</label>
+                <span className="text-2xl font-bold text-primary-600">
+                  {dailyPeak} <span className="text-sm font-normal text-gray-400">词</span>
+                </span>
+              </div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                step={5}
+                value={Math.min(dailyPeak, 100)}
+                onChange={e => setDailyPeak(Number(e.target.value))}
+                className="w-full accent-primary-500 cursor-pointer h-2"
+                style={{ touchAction: 'none' }}
+              />
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <span>10词</span>
+                <span>100词</span>
+              </div>
+            </div>
+
+            {/* 预测图表：数据刷新时保留旧图（半透明），避免闪烁 */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-gray-500">每日负荷预测</p>
+                {forecastStale && <span className="text-xs text-gray-300 animate-pulse">更新中…</span>}
+              </div>
+              {forecast
+                ? <div style={{ opacity: forecastStale ? 0.4 : 1, transition: 'opacity 0.2s' }}>
+                    <LearningForecastChart forecast={forecast} />
+                  </div>
+                : forecastStale
+                  ? <div className="h-24 rounded-xl bg-gray-100 animate-pulse" />
+                  : null
+              }
+              {forecast && forecast.projected_completion_date && (
+                <p className="text-xs text-gray-500 mt-1">
+                  预计完成日：{String(forecast.projected_completion_date).slice(0,4)}/{String(forecast.projected_completion_date).slice(4,6)}/{String(forecast.projected_completion_date).slice(6,8)}
+                </p>
+              )}
+              {forecast && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  💡 图中空白日为艾宾浩斯休息日，当天无到期复习，无需学习
+                </p>
+              )}
             </div>
 
             {planError && <p className="text-red-500 text-xs mb-3">{planError}</p>}

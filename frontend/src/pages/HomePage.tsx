@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getStudents, createStudent, getWordbooks, getTodayTask, getPetStatus, startTodaySession } from '@/api'
+import { getStudents, createStudent, getWordbooks, getTodayTask, getPetStatus, startTodaySession, getForecast } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
 import { useWordbook } from '@/hooks/useWordbook'
-import type { Student, Wordbook, TodayTask, PetStatus } from '@/types'
+import type { Student, Wordbook, TodayTask, PetStatus, Forecast } from '@/types'
+import LearningForecastChart from '@/components/LearningForecastChart'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -17,6 +18,7 @@ export default function HomePage() {
   const [error, setError] = useState('')
   const [todayTask, setTodayTask] = useState<TodayTask | null>(null)
   const [pet, setPet] = useState<PetStatus | null>(null)
+  const [forecast, setForecast] = useState<Forecast | null>(null)
   const [starting, setStarting] = useState(false)
 
   useEffect(() => {
@@ -27,6 +29,11 @@ export default function HomePage() {
   useEffect(() => {
     if (!student || !currentWb) { setTodayTask(null); return }
     getTodayTask(student.id, currentWb.id).then(setTodayTask).catch(() => setTodayTask(null))
+  }, [student?.id, currentWb?.id])
+
+  useEffect(() => {
+    if (!student || !currentWb) { setForecast(null); return }
+    getForecast(student.id, currentWb.id).then(setForecast).catch(() => setForecast(null))
   }, [student?.id, currentWb?.id])
 
   useEffect(() => {
@@ -75,6 +82,14 @@ export default function HomePage() {
   const taskTotal  = todayTask ? todayTask.review_count + todayTask.new_count : 0
   const taskDone   = taskTotal === 0 && todayTask !== null
 
+  // 今日负荷状态
+  const reviewLoad = todayTask?.review_count ?? 0
+  const planPeak   = todayTask?.plan.daily_peak ?? 50
+  const loadStatus = !todayTask || taskDone ? null
+    : reviewLoad >= planPeak               ? 'red'
+    : reviewLoad >= Math.floor(planPeak * 0.7) ? 'yellow'
+    : 'green'
+
   return (
     <div className="p-4 pt-10 pb-28">
       {/* ── 顶部：问候 + 切换学生 ─────────────────────────── */}
@@ -117,6 +132,15 @@ export default function HomePage() {
               <p className={`text-lg font-bold ${taskDone ? 'text-green-700' : 'text-white'}`}>
                 {taskDone ? '今日任务全部完成 🎉' : '今日任务'}
               </p>
+              {loadStatus && (
+                <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium
+                  ${ loadStatus === 'red'    ? 'bg-red-100/80 text-red-700'
+                   : loadStatus === 'yellow' ? 'bg-yellow-100/80 text-yellow-700'
+                   : 'bg-green-100/80 text-green-700'}`}
+                >
+                  {loadStatus === 'red' ? '🔴 负荷过重' : loadStatus === 'yellow' ? '🟡 复习积压' : '🟢 状态正常'}
+                </span>
+              )}
             </div>
             <span className="text-3xl">{taskDone ? '✅' : '📝'}</span>
           </div>
@@ -136,6 +160,20 @@ export default function HomePage() {
                   </div>
                 </>
               )}
+              <div className="w-px bg-white/20" />
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">{todayTask.plan.remaining_days}</p>
+                <p className="text-xs text-white/70">剩余天数</p>
+              </div>
+            </div>
+          )}
+
+          {/* 计划滞后警告 */}
+          {todayTask && todayTask.plan.remaining_days === 0 && todayTask.total_unintroduced > 0 && (
+            <div className="bg-orange-400/20 border border-orange-300/40 rounded-xl px-3 py-2 mb-3">
+              <p className="text-xs text-white font-medium">
+                ⚠️ 计划天数已用完，还有 {todayTask.total_unintroduced} 词未学。请到词本页面调整计划天数。
+              </p>
             </div>
           )}
 
@@ -166,6 +204,21 @@ export default function HomePage() {
       ) : (
         <div className="bg-gray-50 border border-gray-100 rounded-3xl p-5 mb-4 text-center text-gray-400 text-sm">
           {student ? '未选择单词本，前往单词本页面选择' : '请先选择学生'}
+        </div>
+      )}
+
+      {/* ── 学习负荷预测图 ──────────────────────────────────── */}
+      {student && currentWb && forecast && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-3 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-gray-700">📈 学习负荷预测</p>
+            {forecast.projected_completion_date && (
+              <p className="text-xs text-green-600 font-medium">
+                预计完成：{String(forecast.projected_completion_date).slice(4,6)}/{String(forecast.projected_completion_date).slice(6,8)}
+              </p>
+            )}
+          </div>
+          <LearningForecastChart forecast={forecast} maxDays={21} />
         </div>
       )}
 

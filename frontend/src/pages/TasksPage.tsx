@@ -128,7 +128,7 @@ export default function TasksPage() {
             ) : (
               <>
                 <div className="bg-gray-50 rounded-xl px-4 py-2 text-xs text-gray-500 mb-5 flex items-center gap-2">
-                  <span>📅 每日计划：{task.plan.daily_new} 词</span>
+                  <span>📅 剩余天数：{task.plan.remaining_days} 天</span>
                   <span>·</span>
                   <span>剩余未学：{task.remaining_new} 词</span>
                 </div>

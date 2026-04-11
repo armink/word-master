@@ -92,10 +92,33 @@ export interface StudyPlan {
   student_id: number
   wordbook_id: number
   daily_new: number
+  remaining_days: number
+  daily_peak: number
+  completed_days: number
+  last_completed_date: number
+  target_level: number        // 1=英译中, 2=+中译英, 3=+拼写
   start_date: number
   status: PlanStatus
   created_at: number
   updated_at: number
+}
+
+export interface ForecastDay {
+  date: number
+  review_count: number
+  new_count: number
+  total: number
+  is_over_peak: boolean
+  is_future: boolean
+}
+
+export interface Forecast {
+  history: ForecastDay[]
+  forecast: ForecastDay[]
+  total_unintroduced: number
+  remaining_days: number
+  daily_peak: number
+  projected_completion_date: number | null
 }
 
 export interface TodayTaskItem {
@@ -111,6 +134,7 @@ export interface TodayTask {
   remaining_new: number
   today_introduced: number
   in_progress_answered: number
+  total_unintroduced: number
   items: TodayTaskItem[]
 }
 

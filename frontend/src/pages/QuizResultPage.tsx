@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getQuizSession, getTodayTask, startExtraSession, getWordbookStats } from '@/api'
+import { getQuizSession, getTodayTask, startExtraSession, getWordbookStats, completeTodayTask } from '@/api'
 import { useStudent } from '@/hooks/useStudent'
 import { useWordbook } from '@/hooks/useWordbook'
 import type { QuizSession, TodayTask, WordbookStats } from '@/types'
@@ -33,7 +33,13 @@ export default function QuizResultPage() {
   useEffect(() => {
     if (!student || !selectedWb) return
     getTodayTask(student.id, selectedWb.id)
-      .then(setTodayTask)
+      .then(task => {
+        setTodayTask(task)
+        // 今日所有词已完成（无复习、无新词、无剩余）→ 标记当天完成
+        if (task.review_count === 0 && task.new_count === 0 && task.remaining_new === 0) {
+          completeTodayTask(student.id, selectedWb.id).catch(() => { /* 幂等，忽略重复调用错误 */ })
+        }
+      })
       .catch(() => { /* 无计划时忽略 */ })
     getWordbookStats(student.id, selectedWb.id)
       .then(setStats)

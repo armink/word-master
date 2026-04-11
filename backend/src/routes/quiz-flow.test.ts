@@ -22,7 +22,7 @@ import {
   setupTestDb, createStudent, createWordbook, createItem, addItemToWordbook,
   createPlan, getMastery,
 } from '../__tests__/helpers'
-import { nextReviewDate, todayInt } from './tasks'
+import { nextReviewDate, todayInt, addDaysToInt } from './tasks'
 
 setupTestDb()
 
@@ -45,6 +45,9 @@ function insertMastery(opts: {
   spellingNext?: number
 }) {
   const today = todayInt()
+  // 默认 introduced_date 用昨天，表示"之前已引入、今日到期复习"
+  // 若用 today 则会占用今日新词配额
+  const yesterday = addDaysToInt(today, -1)
   db.prepare(`
     INSERT INTO student_mastery
       (student_id, item_id, introduced_date,
@@ -54,7 +57,7 @@ function insertMastery(opts: {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     opts.studentId, opts.itemId,
-    opts.introducedDate ?? today,
+    opts.introducedDate ?? yesterday,
     opts.enToZhStage ?? 1,    opts.enToZhNext ?? today,
     opts.zhToEnStage ?? 0,    opts.zhToEnNext ?? 0,
     opts.spellingStage ?? 0,  opts.spellingNext ?? 0,
@@ -71,7 +74,9 @@ function bootstrap(wordCount = 5, dailyNew = 5) {
     addItemToWordbook(wid, id, i)
     itemIds.push(id)
   }
-  createPlan(sid, wid, dailyNew)
+  // remaining_days = ceil(wordCount / dailyNew)，使每日新词配额与原 dailyNew 等效
+  const remainingDays = Math.max(1, Math.ceil(wordCount / dailyNew))
+  createPlan(sid, wid, remainingDays)
   return { sid, wid, itemIds }
 }
 
@@ -156,9 +161,10 @@ describe('今日任务统计 (GET /api/tasks/today)', () => {
 
   it('今日已引入的词占用配额，减少 new_count', async () => {
     const { sid, wid, itemIds } = bootstrap(5, 5)
-    // 人工写入2个"今日已学"词（模拟上午已完成部分）
-    insertMastery({ studentId: sid, itemId: itemIds[0], enToZhStage: 1, enToZhNext: 99991231 })
-    insertMastery({ studentId: sid, itemId: itemIds[1], enToZhStage: 1, enToZhNext: 99991231 })
+    const today = todayInt()
+    // 人工写入2个"今日已学"词（模拟上午已完成部分，introducedDate = 今天）
+    insertMastery({ studentId: sid, itemId: itemIds[0], introducedDate: today, enToZhStage: 1, enToZhNext: 99991231 })
+    insertMastery({ studentId: sid, itemId: itemIds[1], introducedDate: today, enToZhStage: 1, enToZhNext: 99991231 })
     const res = await apiGetToday(sid, wid)
     // 已用配额2，剩余3 → new_count=3
     expect(res.body.new_count).toBe(3)
@@ -269,7 +275,8 @@ describe('计划 session 完整流程', () => {
     await apiFinish(session.id)
 
     const res = await apiGetToday(sid, wid)
-    // 已引入2个，配额5-2=3，剩余3个未引入词 → new_count=3
+    // remaining_days=1，totalUnintroduced=3，todayIntroduced=2，totalForQuota=5
+    // dailyNewQuota = ceil(5/1)=5，dailyNewForSession = min(5,50) - 2 = 3
     expect(res.body.new_count).toBe(3)
     expect(res.body.today_introduced).toBe(2)
 
@@ -453,11 +460,12 @@ describe('GET /api/tasks/stats', () => {
 
   it('today_new 仅统计 introduced_date = 今日', async () => {
     const { sid, wid, itemIds } = bootstrap(5, 5)
+    const today = todayInt()
     // item0 昨天引入（用一个过去的日期）
     insertMastery({ studentId: sid, itemId: itemIds[0], introducedDate: 20200101, enToZhStage: 1, enToZhNext: 99991231 })
     // item1, item2 今天引入
-    insertMastery({ studentId: sid, itemId: itemIds[1], enToZhStage: 1, enToZhNext: 99991231 })
-    insertMastery({ studentId: sid, itemId: itemIds[2], enToZhStage: 1, enToZhNext: 99991231 })
+    insertMastery({ studentId: sid, itemId: itemIds[1], introducedDate: today, enToZhStage: 1, enToZhNext: 99991231 })
+    insertMastery({ studentId: sid, itemId: itemIds[2], introducedDate: today, enToZhStage: 1, enToZhNext: 99991231 })
     const res = await apiGetStats(sid, wid)
     expect(res.body.today_new).toBe(2)
   })
@@ -827,7 +835,7 @@ describe('首次正确率计算', () => {
     const sid = createStudent()
     const wid = createWordbook()
     for (let i = 0; i < 5; i++) addItemToWordbook(wid, createItem(`w${i}`, `词${i}`), i)
-    createPlan(sid, wid, 5)
+    createPlan(sid, wid, 1)  // remaining_days=1 → 5词全部今日出现
     const startRes = await apiStartTask(sid, wid)
     expect(startRes.status).toBe(201)
     const { session, items } = startRes.body as { session: { id: number }; items: Array<{ id: number }> }
@@ -860,5 +868,142 @@ describe('首次正确率计算', () => {
     // session_items = 4，首次答对 = 4 → 1.0，不超过 100%
     expect(res.body.final_accuracy).toBeLessThanOrEqual(1.0)
     expect(res.body.total_words).toBe(4)
+  })
+})
+
+// ══════════════════════════════════════════════════════════════════════
+// 10. target_level 解锁链控制
+// ══════════════════════════════════════════════════════════════════════
+describe('target_level 解锁链控制', () => {
+  /**
+   * 创建计划时传 target_level。
+   * 插入一个 en_to_zh_stage=1 今日到期的复习词，跑一轮答对，
+   * 触发 stage 1→2，验证是否解锁 zh_to_en。
+   */
+  async function runReviewSession(sid: number, wid: number, itemId: number) {
+    const today = todayInt()
+    insertMastery({ studentId: sid, itemId, enToZhStage: 1, enToZhNext: today })
+    const { session, items } = (await apiStartTask(sid, wid)).body as {
+      session: { id: number }; items: Array<{ id: number }>
+    }
+    await apiAnswer(session.id, itemId, true)
+    await apiFinish(session.id)
+  }
+
+  it('target_level=1：en_to_zh stage 1→2 后不解锁 zh_to_en', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemId = createItem('cat', '猫', 'word')
+    addItemToWordbook(wid, itemId, 0)
+    createPlan(sid, wid, 1, 1)   // target_level=1
+
+    await runReviewSession(sid, wid, itemId)
+
+    const m = getMastery(sid, itemId)
+    expect(m?.en_to_zh_stage).toBe(2)
+    expect(m?.zh_to_en_stage).toBe(0)  // 未被解锁
+  })
+
+  it('target_level=2：en_to_zh stage 1→2 后解锁 zh_to_en', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemId = createItem('dog', '狗', 'word')
+    addItemToWordbook(wid, itemId, 0)
+    createPlan(sid, wid, 1, 2)   // target_level=2
+
+    await runReviewSession(sid, wid, itemId)
+
+    const m = getMastery(sid, itemId)
+    expect(m?.en_to_zh_stage).toBe(2)
+    expect(m?.zh_to_en_stage).toBe(1)  // 已解锁
+  })
+
+  it('target_level=3：en_to_zh stage 1→2 后解锁 zh_to_en', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemId = createItem('bird', '鸟', 'word')
+    addItemToWordbook(wid, itemId, 0)
+    createPlan(sid, wid, 1, 3)   // target_level=3（默认）
+
+    await runReviewSession(sid, wid, itemId)
+
+    const m = getMastery(sid, itemId)
+    expect(m?.zh_to_en_stage).toBe(1)  // 已解锁
+  })
+
+  it('target_level=2：zh_to_en stage 1→2 后不解锁 spelling', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemId = createItem('fish', '鱼', 'word')
+    addItemToWordbook(wid, itemId, 0)
+    createPlan(sid, wid, 1, 2)   // target_level=2
+
+    const today = todayInt()
+    // zh_to_en stage=1 今日到期，en_to_zh 已完成（不影响本次）
+    insertMastery({
+      studentId: sid, itemId,
+      enToZhStage: 3, enToZhNext: 99991231,
+      zhToEnStage: 1, zhToEnNext: today,
+      spellingStage: 0,
+    })
+
+    const { session, items } = (await apiStartTask(sid, wid)).body as {
+      session: { id: number }; items: Array<{ id: number }>
+    }
+    await apiAnswer(session.id, itemId, true)
+    await apiFinish(session.id)
+
+    const m = getMastery(sid, itemId)
+    expect(m?.zh_to_en_stage).toBe(2)
+    expect(m?.spelling_stage).toBe(0)  // 不解锁 spelling
+  })
+
+  it('target_level=3：zh_to_en stage 1→2 后解锁 spelling', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemId = createItem('tree', '树', 'word')
+    addItemToWordbook(wid, itemId, 0)
+    createPlan(sid, wid, 1, 3)   // target_level=3
+
+    const today = todayInt()
+    insertMastery({
+      studentId: sid, itemId,
+      enToZhStage: 3, enToZhNext: 99991231,
+      zhToEnStage: 1, zhToEnNext: today,
+      spellingStage: 0,
+    })
+
+    const { session, items } = (await apiStartTask(sid, wid)).body as {
+      session: { id: number }; items: Array<{ id: number }>
+    }
+    await apiAnswer(session.id, itemId, true)
+    await apiFinish(session.id)
+
+    const m = getMastery(sid, itemId)
+    expect(m?.zh_to_en_stage).toBe(2)
+    expect(m?.spelling_stage).toBe(1)  // 已解锁
+  })
+
+  it('target_level=3：phrase 类型答对后 zh_to_en≥2 不解锁 spelling（phrase 无拼写）', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemId = createItem('by the way', '顺便说', 'phrase')
+    addItemToWordbook(wid, itemId, 0)
+    createPlan(sid, wid, 1, 3)
+
+    const today = todayInt()
+    insertMastery({
+      studentId: sid, itemId,
+      enToZhStage: 3, enToZhNext: 99991231,
+      zhToEnStage: 1, zhToEnNext: today,
+      spellingStage: 0,
+    })
+
+    const { session } = (await apiStartTask(sid, wid)).body as { session: { id: number } }
+    await apiAnswer(session.id, itemId, true)
+    await apiFinish(session.id)
+
+    const m = getMastery(sid, itemId)
+    expect(m?.spelling_stage).toBe(0)  // phrase 不解锁 spelling
   })
 })

@@ -212,6 +212,14 @@ router.post('/sessions/:id/finish', (req, res) => {
   const isPlanMode = itemQtMap.size > 0
   const today = todayInt()
 
+  // 读取计划目标层级（控制解锁链上限）
+  const planTargetLevel: number = isPlanMode ? (() => {
+    const p = db.prepare(
+      "SELECT target_level FROM study_plans WHERE student_id=? AND wordbook_id=?"
+    ).get(session.student_id, session.wordbook_id) as { target_level: number } | undefined
+    return p?.target_level ?? 3
+  })() : 3
+
   db.transaction(() => {
     for (const { item_id, is_correct } of lastAttempts) {
       const item = db.prepare('SELECT type FROM items WHERE id = ?').get(item_id) as { type: string }
@@ -264,48 +272,57 @@ router.post('/sessions/:id/finish', (req, res) => {
       // ── 计划模式：更新艾宾浩斯 stage / next ───────────────────────
       if (isPlanMode) {
         const qt = itemQtMap.get(item_id) ?? session.quiz_type
-        type MasteryStages = { en_to_zh_stage: number; zh_to_en_stage: number; spelling_stage: number }
+        type MasteryStages = { en_to_zh_stage: number; zh_to_en_stage: number; spelling_stage: number; error_weight: number }
         const m = db.prepare(
-          'SELECT en_to_zh_stage, zh_to_en_stage, spelling_stage FROM student_mastery WHERE student_id=? AND item_id=?'
+          'SELECT en_to_zh_stage, zh_to_en_stage, spelling_stage, COALESCE(error_weight, 0) AS error_weight FROM student_mastery WHERE student_id=? AND item_id=?'
         ).get(session.student_id, item_id) as MasteryStages | undefined
 
         if (m) {
+          // 错误权重更新：答错 +1.0（上限5），答对 ×0.6
+          // 使用更新前的 error_weight 计算下次复习间隔，再写入新权重
+          const ew = m.error_weight
+          const newEw = is_correct
+            ? parseFloat((ew * 0.6).toFixed(4))
+            : Math.min(5, parseFloat((ew + 1.0).toFixed(4)))
+
           if (qt === 'en_to_zh') {
             // 到这里 is_correct=true 或 stage>0（已引入词答错）
             const newStage = is_correct
               ? Math.min(5, m.en_to_zh_stage + 1)
               : Math.max(1, m.en_to_zh_stage)
-            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            const nextDate = is_correct ? nextReviewDate(newStage, today, ew) : today
             db.prepare(`
               UPDATE student_mastery
               SET introduced_date = CASE WHEN introduced_date = 0 THEN ? ELSE introduced_date END,
-                  en_to_zh_stage = ?, en_to_zh_next = ?, last_reviewed_at = ?, updated_at = ?
+                  en_to_zh_stage = ?, en_to_zh_next = ?,
+                  en_to_zh_level = MIN(100, en_to_zh_level + 10),
+                  error_weight = ?, last_reviewed_at = ?, updated_at = ?
               WHERE student_id = ? AND item_id = ?
-            `).run(today, newStage, nextDate, now, now, session.student_id, item_id)
+            `).run(today, newStage, nextDate, newEw, now, now, session.student_id, item_id)
             // 解锁 zh_to_en（en_to_zh_stage 首次达到 2）→ 明天开始，不占今日计数
-            if (newStage >= 2 && m.zh_to_en_stage === 0) {
+            if (newStage >= 2 && m.zh_to_en_stage === 0 && planTargetLevel >= 2) {
               db.prepare(
                 'UPDATE student_mastery SET zh_to_en_stage=1, zh_to_en_next=?, updated_at=? WHERE student_id=? AND item_id=?'
               ).run(nextReviewDate(1), now, session.student_id, item_id)
             }
           } else if (qt === 'zh_to_en') {
             const newStage = is_correct ? Math.min(5, m.zh_to_en_stage + 1) : m.zh_to_en_stage
-            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            const nextDate = is_correct ? nextReviewDate(newStage, today, ew) : today
             db.prepare(
-              'UPDATE student_mastery SET zh_to_en_stage=?, zh_to_en_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
-            ).run(newStage, nextDate, now, now, session.student_id, item_id)
+              'UPDATE student_mastery SET zh_to_en_stage=?, zh_to_en_next=?, error_weight=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
+            ).run(newStage, nextDate, newEw, now, now, session.student_id, item_id)
             // 解锁 spelling（zh_to_en_stage 首次达到 2，仅单词）→ 明天开始
-            if (newStage >= 2 && m.spelling_stage === 0 && item.type === 'word') {
+            if (newStage >= 2 && m.spelling_stage === 0 && item.type === 'word' && planTargetLevel >= 3) {
               db.prepare(
                 'UPDATE student_mastery SET spelling_stage=1, spelling_next=?, updated_at=? WHERE student_id=? AND item_id=?'
               ).run(nextReviewDate(1), now, session.student_id, item_id)
             }
           } else if (qt === 'spelling' && item.type === 'word') {
             const newStage = is_correct ? Math.min(5, m.spelling_stage + 1) : m.spelling_stage
-            const nextDate = is_correct ? nextReviewDate(newStage) : today
+            const nextDate = is_correct ? nextReviewDate(newStage, today, ew) : today
             db.prepare(
-              'UPDATE student_mastery SET spelling_stage=?, spelling_next=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
-            ).run(newStage, nextDate, now, now, session.student_id, item_id)
+              'UPDATE student_mastery SET spelling_stage=?, spelling_next=?, error_weight=?, last_reviewed_at=?, updated_at=? WHERE student_id=? AND item_id=?'
+            ).run(newStage, nextDate, newEw, now, now, session.student_id, item_id)
           }
         }
       }

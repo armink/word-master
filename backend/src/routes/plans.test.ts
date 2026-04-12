@@ -63,7 +63,7 @@ describe('POST /api/plans', () => {
     expect(res.body.error).toMatch(/单词本/)
   })
 
-  it('成功创建计划，target_level 默认为 3', async () => {
+  it('成功创建计划，target_level 默认为 2', async () => {
     const sid = createStudent()
     const wid = createWordbook()
     const res = await apiCreatePlan({ student_id: sid, wordbook_id: wid, remaining_days: 14 })
@@ -72,7 +72,7 @@ describe('POST /api/plans', () => {
       student_id: sid,
       wordbook_id: wid,
       remaining_days: 14,
-      target_level: 3,
+      target_level: 2,
       status: 'active',
     })
   })

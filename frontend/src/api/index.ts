@@ -144,11 +144,12 @@ export const getTodayTask = (student_id: number, wordbook_id: number) =>
 export const getForecast = (
   student_id: number,
   wordbook_id: number,
-  options?: { preview_remaining_days?: number; preview_daily_peak?: number },
+  options?: { preview_remaining_days?: number; preview_daily_peak?: number; preview_target_level?: number },
 ) => {
   const params = new URLSearchParams({ student_id: String(student_id), wordbook_id: String(wordbook_id) })
   if (options?.preview_remaining_days != null) params.set('preview_remaining_days', String(options.preview_remaining_days))
   if (options?.preview_daily_peak != null) params.set('preview_daily_peak', String(options.preview_daily_peak))
+  if (options?.preview_target_level != null) params.set('preview_target_level', String(options.preview_target_level))
   return request<Forecast>(`/tasks/forecast?${params}`)
 }
 

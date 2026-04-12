@@ -57,7 +57,7 @@ export function initSchema() {
     ['completed_days',      'INTEGER NOT NULL DEFAULT 0'],
     ['last_completed_date', 'INTEGER NOT NULL DEFAULT 0'],
     // 学习目标层级：1=英译中，2=英译中+中译英，3=全三关含拼写（默认）
-    ['target_level',        'INTEGER NOT NULL DEFAULT 3'],
+    ['target_level',        'INTEGER NOT NULL DEFAULT 2'],
   ]
   for (const [col, def] of planNewCols) {
     try { db.exec(`ALTER TABLE study_plans ADD COLUMN ${col} ${def}`) } catch { /* 列已存在 */ }

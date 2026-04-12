@@ -22,7 +22,7 @@ export default function WordbookDetailPage() {
   const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [remainingDays, setRemainingDays] = useState(30)
   const [dailyPeak, setDailyPeak] = useState(50)
-  const [targetLevel, setTargetLevel] = useState(3)
+  const [targetLevel, setTargetLevel] = useState(2)
   const [planSaving, setPlanSaving] = useState(false)
   const [planError, setPlanError] = useState('')
   const [forecast, setForecast] = useState<Forecast | null>(null)
@@ -40,7 +40,7 @@ export default function WordbookDetailPage() {
   useEffect(() => {
     if (!id || !student) return
     getPlan(student.id, Number(id))
-      .then(p => { setPlan(p); setRemainingDays(p.remaining_days); setDailyPeak(p.daily_peak); setTargetLevel(p.target_level ?? 3) })
+      .then(p => { setPlan(p); setRemainingDays(p.remaining_days); setDailyPeak(p.daily_peak); setTargetLevel(p.target_level ?? 2) })
       .catch(() => setPlan(null))
   }, [id, student])
 
@@ -52,12 +52,13 @@ export default function WordbookDetailPage() {
       getForecast(student.id, Number(id), {
         preview_remaining_days: remainingDays,
         preview_daily_peak: dailyPeak,
+        preview_target_level: targetLevel,
       })
         .then(data => { setForecast(data); setForecastStale(false) })
         .catch(() => setForecastStale(false))
     }, 600)
     return () => clearTimeout(timer)
-  }, [showPlanSheet, id, student, remainingDays, dailyPeak])
+  }, [showPlanSheet, id, student, remainingDays, dailyPeak, targetLevel])
 
   const handleImport = async () => {
     if (!importText.trim() || !id) return

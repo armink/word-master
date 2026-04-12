@@ -278,4 +278,25 @@ describe('GET /api/tasks/forecast', () => {
     // forecast[0] 的 new_count 应接近 total_unintroduced（preview 参数生效）
     expect(res.body.forecast[0].new_count).toBe(10)
   })
+
+  it('无激活计划时，传入 preview 参数也能返回预测数据（首次创建计划预览）', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    for (let i = 0; i < 5; i++) addItemToWordbook(wid, createItem(`w${i}`, `词${i}`), i)
+    // 不创建计划，直接带 preview 参数请求
+    const res = await request(app).get(
+      `/api/tasks/forecast?student_id=${sid}&wordbook_id=${wid}&preview_remaining_days=5&preview_daily_peak=50&preview_target_level=2`
+    )
+    expect(res.status).toBe(200)
+    expect(res.body.total_unintroduced).toBe(5)
+    expect(res.body.forecast).toBeInstanceOf(Array)
+    expect(res.body.forecast.length).toBeGreaterThan(0)
+  })
+
+  it('无激活计划且未传 preview 参数时返回 404', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const res = await request(app).get(`/api/tasks/forecast?student_id=${sid}&wordbook_id=${wid}`)
+    expect(res.status).toBe(404)
+  })
 })

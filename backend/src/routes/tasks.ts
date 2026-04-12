@@ -458,9 +458,10 @@ router.post('/complete', (req, res) => {
 
 // ── GET /api/tasks/forecast ───────────────────────────────────────
 // 学习负载预测：过去14天实际 + 未来45天模拟
-// ?student_id=&wordbook_id=&preview_remaining_days=&preview_daily_peak=
+// ?student_id=&wordbook_id=&preview_remaining_days=&preview_daily_peak=&preview_target_level=
+// 无激活计划时，若传入全部 preview_* 参数则进入纯预览模式（用于首次创建计划时展示预测图）
 router.get('/forecast', (req, res) => {
-  const { student_id, wordbook_id, preview_remaining_days, preview_daily_peak } = req.query
+  const { student_id, wordbook_id, preview_remaining_days, preview_daily_peak, preview_target_level } = req.query
   if (!student_id || !wordbook_id) {
     res.status(400).json({ error: '缺少 student_id / wordbook_id' }); return
   }
@@ -469,17 +470,23 @@ router.get('/forecast', (req, res) => {
   const plan = db.prepare(
     "SELECT * FROM study_plans WHERE student_id = ? AND wordbook_id = ? AND status = 'active'"
   ).get(sid, wid) as StudyPlanRow | undefined
-  if (!plan) { res.status(404).json({ error: '未找到激活的学习计划' }); return }
+
+  // 无计划时：必须提供 preview 参数才能进入纯预览模式，否则 404
+  if (!plan && !preview_remaining_days) {
+    res.status(404).json({ error: '未找到激活的学习计划' }); return
+  }
 
   // 允许预览模式（调整参数而不保存）
   const remainingDays = preview_remaining_days
     ? Math.max(1, Number(preview_remaining_days))
-    : Math.max(1, plan.remaining_days ?? 30)
+    : Math.max(1, plan!.remaining_days ?? 30)
   const dailyPeak = preview_daily_peak
     ? Math.max(1, Number(preview_daily_peak))
-    : (plan.daily_peak ?? 50)
+    : (plan!.daily_peak ?? 50)
   // 学习目标层级：预测模拟只计入目标层级以内的 quiz 类型
-  const targetLevel = plan.target_level ?? 3
+  const targetLevel = preview_target_level
+    ? Math.min(3, Math.max(1, Number(preview_target_level)))
+    : (plan?.target_level ?? 2)
 
   const today = todayInt()
   const HISTORY_DAYS = 14
@@ -627,7 +634,7 @@ router.get('/forecast', (req, res) => {
   }
 
   // 剩余词超量提示
-  const overloadWarning = plan.remaining_days === 0 && totalUnintroduced > 0
+  const overloadWarning = plan && plan.remaining_days === 0 && totalUnintroduced > 0
     ? { remaining_words: totalUnintroduced, suggested_extra_days: Math.ceil(totalUnintroduced / Math.max(1, dailyPeak)) }
     : null
 

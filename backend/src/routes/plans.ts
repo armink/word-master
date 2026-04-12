@@ -28,7 +28,7 @@ router.get('/', (req, res) => {
 // POST /api/plans  —  创建或替换（upsert）
 // Body: { student_id, wordbook_id, remaining_days, daily_peak?, target_level? }
 router.post('/', (req, res) => {
-  const { student_id, wordbook_id, remaining_days, daily_peak = 50, target_level = 3 } = req.body
+  const { student_id, wordbook_id, remaining_days, daily_peak = 50, target_level = 2 } = req.body
   if (!student_id || !wordbook_id || remaining_days === undefined) {
     res.status(400).json({ error: '缺少 student_id / wordbook_id / remaining_days' })
     return

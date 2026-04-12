@@ -11,26 +11,47 @@ interface Props {
 
 // 预设波形高度，避免 Math.random() 每次 render 时跳动
 const BARS = [8, 14, 22, 10, 30, 18, 14, 26, 34, 18, 26, 14, 22, 10, 18, 8]
+// 连接成功后延迟展示浮窗，留出余量避免用户立刻说话
+const CONNECT_DELAY = 150
 
 export default function VoiceInput({ lang, onResult, onError, disabled }: Props) {
   const { recording, start, stop } = useAudioRecorder()
   const buttonRef  = useRef<HTMLButtonElement>(null)
   const touchActiveRef = useRef(false)
-  const cancelRef  = useRef(false)   // 当前手势是否落在取消区域
-  const [pressing,   setPressing]   = useState(false)
-  const [cancelMode, setCancelMode] = useState(false)
+  const cancelRef  = useRef(false)             // 当前手势是否落在取消区域
+  const cancelledDuringConnectRef = useRef(false) // 连接阶段是否已松手
+  const [connecting,  setConnecting] = useState(false) // 等待麦克风就绪（按钮上显示）
+  const [pressing,    setPressing]   = useState(false) // 浮窗已展示，录音进行中
+  const [cancelMode,  setCancelMode] = useState(false)
 
   // ── 开始录音 ────────────────────────────────────────────────────
   const doStart = useCallback(async () => {
     if (disabled) return
     cancelRef.current = false
+    cancelledDuringConnectRef.current = false
     setCancelMode(false)
-    setPressing(true)
+    setConnecting(true)  // 仅更新按钮，不弹浮窗
     try { navigator.vibrate?.(40) } catch { /* 不支持震动忽略 */ }
     try {
       await start()
+      // 连接成功：检查是否已在连接期间松手
+      if (cancelledDuringConnectRef.current) {
+        stop()           // 丢弃已录音频，关闭麦克风
+        setConnecting(false)
+        return
+      }
+      // 等待余量，再弹浮窗
+      await new Promise<void>(r => setTimeout(r, CONNECT_DELAY))
+      if (cancelledDuringConnectRef.current) {
+        stop()
+        setConnecting(false)
+        return
+      }
+      setConnecting(false)
+      setPressing(true)  // 现在才弹出全屏浮窗
+      try { navigator.vibrate?.(40) } catch { /* 不支持震动忽略 */ }
     } catch (err) {
-      setPressing(false)
+      setConnecting(false)
       if (!window.isSecureContext) {
         onError?.('需要 HTTPS 才能使用麦克风，请改用 https:// 地址访问')
         return
@@ -42,7 +63,7 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
         onError?.('无法访问麦克风，建议使用 Chrome 或 Safari')
       }
     }
-  }, [disabled, start, onError])
+  }, [disabled, start, stop, onError])
 
   // ── 结束录音：cancelled=true 时丢弃音频 ─────────────────────────
   const doStop = useCallback(async (cancelled: boolean) => {
@@ -83,7 +104,24 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
     return () => el.removeEventListener('touchstart', onTouchStart)
   }, [doStart])
 
-  // ── 全局 touchmove / touchend（录音期间追踪手指位置）────────────
+  // ── 连接阶段：全局监听松手，标记取消（doStart 负责清理）────────
+  useEffect(() => {
+    if (!connecting) return
+    const onRelease = () => {
+      touchActiveRef.current = false
+      cancelledDuringConnectRef.current = true
+    }
+    document.addEventListener('touchend',    onRelease)
+    document.addEventListener('touchcancel', onRelease)
+    document.addEventListener('pointerup',   onRelease)
+    return () => {
+      document.removeEventListener('touchend',    onRelease)
+      document.removeEventListener('touchcancel', onRelease)
+      document.removeEventListener('pointerup',   onRelease)
+    }
+  }, [connecting])
+
+  // ── 录音中：全局 touchmove / touchend（追踪手指位置）────────────
   useEffect(() => {
     if (!pressing) return
     const onMove = (e: TouchEvent) => {
@@ -202,10 +240,12 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
         className={`w-full py-4 rounded-2xl font-bold text-base select-none transition-all
           ${pressing || recording
             ? 'bg-primary-500 text-white shadow-inner scale-[0.97]'
+            : connecting
+            ? 'bg-primary-300 text-primary-800 shadow-inner scale-[0.97]'
             : 'bg-primary-100 text-primary-700 border-2 border-primary-200 hover:bg-primary-200'
           } disabled:opacity-40 disabled:cursor-not-allowed`}
       >
-        {pressing || recording ? '🎤 录音中…' : '🎤 按住说话'}
+        {pressing || recording ? '🎤 录音中…' : connecting ? '连接中…' : '🎤 按住说话'}
       </button>
     </>
   )

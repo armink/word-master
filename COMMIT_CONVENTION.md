@@ -72,3 +72,45 @@ refactor(db): 将单词表查询抽取为独立 Repository 层
 | `dev` | 日常开发主分支 |
 | `feat/<name>` | 新功能分支，如 `feat/quiz-system` |
 | `fix/<name>` | Bug 修复分支 |
+
+## 提交前检查清单（AI Agent 必须执行）
+
+> 每次执行 `git commit` **之前**，必须按顺序完成以下检查，全部通过后才能提交。
+> 任何一项失败，必须先修复，**不允许在检查失败的情况下强行提交**。
+
+### 1. TypeScript 类型检查
+
+在 `backend/` 目录运行：
+
+```bash
+cd backend && npx tsc --noEmit
+```
+
+**预期**：无任何输出（零错误）。
+
+### 2. 后端测试（含覆盖率）
+
+在 `backend/` 目录运行：
+
+```bash
+cd backend && npm run test:coverage
+```
+
+**预期**：
+- 所有测试通过（0 failed）
+- 各项覆盖率指标不低于 `vitest.config.ts` 中 `thresholds` 设定的阈值
+- 不允许为通过检查而降低 `thresholds` 阈值
+
+### 3. 前端 TypeScript 类型检查
+
+在 `frontend/` 目录运行：
+
+```bash
+cd frontend && npx tsc --noEmit
+```
+
+**预期**：无任何输出（零错误）。
+
+### 4. 生成提交信息
+
+按本文件「格式」规范生成提交信息，使用**中文**，遵循 Conventional Commits。

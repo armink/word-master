@@ -883,7 +883,7 @@ describe('target_level 解锁链控制', () => {
   async function runReviewSession(sid: number, wid: number, itemId: number) {
     const today = todayInt()
     insertMastery({ studentId: sid, itemId, enToZhStage: 1, enToZhNext: today })
-    const { session, items } = (await apiStartTask(sid, wid)).body as {
+    const { session } = (await apiStartTask(sid, wid)).body as {
       session: { id: number }; items: Array<{ id: number }>
     }
     await apiAnswer(session.id, itemId, true)
@@ -947,7 +947,7 @@ describe('target_level 解锁链控制', () => {
       spellingStage: 0,
     })
 
-    const { session, items } = (await apiStartTask(sid, wid)).body as {
+    const { session } = (await apiStartTask(sid, wid)).body as {
       session: { id: number }; items: Array<{ id: number }>
     }
     await apiAnswer(session.id, itemId, true)
@@ -973,7 +973,7 @@ describe('target_level 解锁链控制', () => {
       spellingStage: 0,
     })
 
-    const { session, items } = (await apiStartTask(sid, wid)).body as {
+    const { session } = (await apiStartTask(sid, wid)).body as {
       session: { id: number }; items: Array<{ id: number }>
     }
     await apiAnswer(session.id, itemId, true)

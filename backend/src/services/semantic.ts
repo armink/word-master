@@ -76,6 +76,16 @@ export async function checkSemanticMatch(
   standard: string,
   userAnswer: string,
 ): Promise<{ match: boolean; score: number; method: 'exact' | 'pinyin' | 'keyword' | 'semantic' }> {
+  // 支持分号分隔的多义项（如「查寻；抬头看」），任一义项匹配即通过
+  const segments = standard.split('；').map(s => s.trim()).filter(Boolean)
+  if (segments.length > 1) {
+    for (const seg of segments) {
+      const r = await checkSemanticMatch(seg, userAnswer)
+      if (r.match) return r
+    }
+    return { match: false, score: 0, method: 'keyword' }
+  }
+
   const normStd = normalizeText(standard)
   const normAns = normalizeText(userAnswer)
 

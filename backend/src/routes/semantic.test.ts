@@ -109,3 +109,53 @@ describe('POST /api/semantic/check-english', () => {
     expect(res.body.match).toBe(true)
   })
 })
+
+describe('POST /api/semantic/check-chinese - 分号多义词分段匹配', () => {
+  it('用户答出第一个义项应视为正确（查寻；抬头看 → 查询）', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '查寻；抬头看', answer: '查询' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(true)
+  })
+
+  it('用户答出第二个义项应视为正确（查寻；抬头看 → 抬头）', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '查寻；抬头看', answer: '抬头' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(true)
+  })
+
+  it('用户答出第一个义项应视为正确（步行；走路 → 步行）', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '步行；走路', answer: '步行' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(true)
+  })
+
+  it('用户同音字答出第一个义项应视为正确（步行；走路 → 不行，同音）', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '步行；走路', answer: '不行' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(true)
+  })
+
+  it('用户答出全部义项应视为正确（步行；走路 → 步行走路）', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '步行；走路', answer: '步行走路' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(true)
+  })
+
+  it('完全不相关的答案仍应判错（步行；走路 → 飞翔）', async () => {
+    const res = await request(app)
+      .post('/api/semantic/check-chinese')
+      .send({ standard: '步行；走路', answer: '飞翔' })
+    expect(res.status).toBe(200)
+    expect(res.body.match).toBe(false)
+  })
+})

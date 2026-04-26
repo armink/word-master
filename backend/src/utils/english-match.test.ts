@@ -59,3 +59,21 @@ describe('matchEnglishAnswer - sb./sth. 缩写识别', () => {
     expect(matchEnglishAnswer('suburbs', 'somebody')).toBe(false)
   })
 })
+
+describe('matchEnglishAnswer - 语音识别末尾标点容错', () => {
+  it('STT 返回末尾英文句号应视为正确', () => {
+    expect(matchEnglishAnswer('give a lesson to somebody', 'give a lesson to somebody.')).toBe(true)
+  })
+
+  it('STT 返回末尾中文句号应视为正确', () => {
+    expect(matchEnglishAnswer('give a lesson to somebody', 'Give a lesson to somebody。')).toBe(true)
+  })
+
+  it('STT 返回末尾逗号应视为正确', () => {
+    expect(matchEnglishAnswer('on foot', 'on foot,')).toBe(true)
+  })
+
+  it('STT + sb. 缩写 + 末尾标点同时存在应视为正确', () => {
+    expect(matchEnglishAnswer('give a lesson to sb.', 'give a lesson to somebody.')).toBe(true)
+  })
+})

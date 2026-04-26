@@ -9,8 +9,11 @@
  * 关键时序：
  * - stt.ts 创建 iatWs 后，PCM 先进 pending buffer（iatWs 还在 CONNECTING）
  * - iatWs.on('open') 时 flush pending 并设置 firstSent=true
- * - 必须在 iatWs open 之后才发 'done'，否则走快速松手分支返回 {text: ""}
- * - 使用 fakeIat.waitForConnection() 确保 iatWs 已成功连接再发 done
+ * - 必须在 iatWs.on('open') 执行后才发 'done'，否则走快速松手分支返回 {text: ""}
+ * - 使用 fakeIat.waitForFirstMessage() 等待 fake IAT 收到第一帧作为信号：
+ *   此时 stt.ts 的 iatWs.on('open') 必然已执行，firstSent=true，无 race condition
+ * - 注意：不能用 waitForConnection()（服务端 connection 事件比客户端 open 事件早，
+ *   在 CI 上 done 会在 open 之前被处理，导致 {text:''} 的 flaky 失败）
  */
 import http from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
@@ -29,8 +32,12 @@ type IatHandler = (ws: WebSocket, messages: string[]) => void
 
 interface FakeIat {
   port: number
-  /** 等待 iatWs 成功连接到假服务器 */
-  waitForConnection: () => Promise<void>
+  /**
+   * 等待 fake IAT 服务器收到 stt.ts 发来的第一条消息。
+   * 此时 stt.ts 的 iatWs.on('open') 必然已执行，firstSent=true，
+   * 再发 'done' 不会走快速松手分支。比 TCP connection 事件晚，无 race。
+   */
+  waitForFirstMessage: () => Promise<void>
   close: () => Promise<void>
 }
 
@@ -38,18 +45,21 @@ function createFakeIat(handler: IatHandler): Promise<FakeIat> {
   return new Promise(resolve => {
     const srv = http.createServer()
     const wss = new WebSocketServer({ server: srv })
-    let connected = false
-    let pendingWaiters: Array<() => void> = []
+    let firstMsgReceived = false
+    let firstMsgWaiters: Array<() => void> = []
     let activeWs: WebSocket | null = null
 
     wss.on('connection', ws => {
-      connected = true
       activeWs = ws
-      const fns = pendingWaiters.splice(0)
-      for (const fn of fns) fn()
       const msgs: string[] = []
       ws.on('message', (data) => {
         msgs.push(data.toString())
+        // 第一条消息到达 → stt.ts 的 iatWs.on('open') 已执行，firstSent=true
+        if (!firstMsgReceived) {
+          firstMsgReceived = true
+          const fns = firstMsgWaiters.splice(0)
+          for (const fn of fns) fn()
+        }
         try { handler(ws, msgs) } catch { /* ignore */ }
       })
     })
@@ -58,12 +68,11 @@ function createFakeIat(handler: IatHandler): Promise<FakeIat> {
       const port = (srv.address() as { port: number }).port
       resolve({
         port,
-        waitForConnection: () => {
-          if (connected) return Promise.resolve()
-          return new Promise<void>(res => pendingWaiters.push(res))
+        waitForFirstMessage: () => {
+          if (firstMsgReceived) return Promise.resolve()
+          return new Promise<void>(res => firstMsgWaiters.push(res))
         },
         close: () => new Promise<void>(res => {
-          // 先终止活跃连接，再关服务器
           if (activeWs) { try { activeWs.terminate() } catch { /* ignore */ } }
           wss.close(() => srv.close(() => res()))
         }),
@@ -150,7 +159,7 @@ describe('handleSttStream — 正常识别流程', () => {
     const client = await connectClient(stt.port)
     const msgPromise = collectLastMsg(client)
     client.send(Buffer.from([0x00, 0x01, 0x02]))
-    await iat.waitForConnection()   // 等 iatWs 成功连上假讯飞
+    await iat.waitForFirstMessage()  // 等 fake IAT 收到第一帧 → firstSent=true
     client.send('done')
     expect(JSON.parse(await msgPromise)).toMatchObject({ text: 'apple苹果' })
   })
@@ -159,7 +168,7 @@ describe('handleSttStream — 正常识别流程', () => {
     const client = await connectClient(stt.port, 'en_us')
     const msgPromise = collectLastMsg(client)
     client.send(Buffer.from([0x00, 0x01]))
-    await iat.waitForConnection()
+    await iat.waitForFirstMessage()
     client.send('done')
     expect(JSON.parse(await msgPromise)).toHaveProperty('text')
   })
@@ -211,7 +220,7 @@ describe('handleSttStream — pending buffer 冲刷', () => {
     const msgPromise = collectLastMsg(client)
     // 立即发多帧（进 pending buffer），再等 iatWs open 后发 done
     for (let i = 0; i < 3; i++) client.send(Buffer.alloc(32, i))
-    await iat.waitForConnection()
+    await iat.waitForFirstMessage()
     client.send('done')
     expect(JSON.parse(await msgPromise)).toHaveProperty('text')
   })
@@ -240,7 +249,7 @@ describe('handleSttStream — 讯飞返回错误码', () => {
     const client = await connectClient(stt.port)
     const msgPromise = collectLastMsg(client)
     client.send(Buffer.from([0x00]))
-    await iat.waitForConnection()
+    await iat.waitForFirstMessage()
     client.send('done')
     const msg = JSON.parse(await msgPromise) as { error?: string }
     expect(msg.error).toMatch('10165')
@@ -271,7 +280,7 @@ describe('handleSttStream — 客户端提前断开', () => {
   it('客户端断开后服务端不崩溃，仍可接受新连接', async () => {
     const client = await connectClient(stt.port)
     client.send(Buffer.from([0x00]))
-    await iat.waitForConnection()
+    await iat.waitForFirstMessage()
     client.send('done')
     client.terminate()   // 立即断开
 
@@ -314,7 +323,7 @@ describe('handleSttStream — 多段结果合并', () => {
     const client = await connectClient(stt.port)
     const msgPromise = collectLastMsg(client)
     client.send(Buffer.from([0x00]))
-    await iat.waitForConnection()
+    await iat.waitForFirstMessage()
     client.send('done')
     expect(JSON.parse(await msgPromise)).toMatchObject({ text: 'apple' })
   })

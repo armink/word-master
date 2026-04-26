@@ -19,7 +19,10 @@ function normalizeEn(s: string): string {
 }
 
 function normalizeZh(s: string): string {
-  return s.replace(/[\s\p{P}]/gu, '')
+  // 先去掉括号（全角/半角）及其内容，再去标点空格
+  return s
+    .replace(/[（(][^）)]*[）)]/g, '')
+    .replace(/[\s\p{P}]/gu, '')
 }
 
 /** 单个 token 对目标词的得分 (0–100) */

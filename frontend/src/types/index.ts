@@ -133,6 +133,7 @@ export interface TodayTask {
   new_count: number
   remaining_new: number
   today_introduced: number
+  today_reviewed: number
   in_progress_answered: number
   total_unintroduced: number
   items: TodayTaskItem[]

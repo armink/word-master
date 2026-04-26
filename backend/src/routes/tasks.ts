@@ -85,6 +85,7 @@ function buildTodayItems(
   items: TodayTaskItem[]
   in_progress_answered: number
   today_introduced: number
+  today_reviewed: number
   total_unintroduced: number
 } {
   const today = todayInt()
@@ -182,6 +183,25 @@ function buildTodayItems(
     items: [...reviewItems, ...newItems],
     in_progress_answered: correctInProgress.size,
     today_introduced: todayIntroduced,
+    today_reviewed: (() => {
+      // 今日已完成（passed/abandoned）session 中答对的复习词数
+      // 复习词 = introduced_date > 0 且 introduced_date < today（非今日新引入）
+      const d = new Date(); d.setHours(0, 0, 0, 0)
+      const todayStartUnix = Math.floor(d.getTime() / 1000)
+      return (db.prepare(`
+        SELECT COUNT(DISTINCT qa.item_id) AS c
+        FROM quiz_answers qa
+        JOIN quiz_sessions qs ON qs.id = qa.session_id
+        JOIN student_mastery sm ON sm.student_id = qs.student_id AND sm.item_id = qa.item_id
+        WHERE qs.student_id = ?
+          AND qs.wordbook_id = ?
+          AND qs.status IN ('passed', 'abandoned')
+          AND qs.started_at >= ?
+          AND qa.is_correct = 1
+          AND sm.introduced_date > 0
+          AND sm.introduced_date < ?
+      `).get(studentId, wordbookId, todayStartUnix, today) as { c: number }).c
+    })(),
     total_unintroduced: totalUnintroduced,
   }
 }
@@ -199,7 +219,7 @@ router.get('/today', (req, res) => {
   ).get(sid, wid) as StudyPlanRow | undefined
   if (!plan) { res.status(404).json({ error: '未找到激活的学习计划' }); return }
 
-  const { items, in_progress_answered, today_introduced, total_unintroduced } = buildTodayItems(sid, wid, plan)
+  const { items, in_progress_answered, today_introduced, today_reviewed, total_unintroduced } = buildTodayItems(sid, wid, plan)
   const reviewCount = items.filter(i => !i.is_new).length
   const newCount = items.filter(i => i.is_new).length
 
@@ -209,6 +229,7 @@ router.get('/today', (req, res) => {
     new_count: newCount,
     remaining_new: Math.max(0, total_unintroduced - newCount),
     today_introduced,
+    today_reviewed,
     in_progress_answered,
     items,
   }

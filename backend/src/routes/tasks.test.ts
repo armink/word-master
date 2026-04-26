@@ -11,7 +11,7 @@ import request from 'supertest'
 import db from '../db/client'
 import app from '../app'
 import { setupTestDb, createStudent, createWordbook, createItem, addItemToWordbook, createPlan } from '../__tests__/helpers'
-import { nextReviewDate, todayInt } from './tasks'
+import { nextReviewDate, todayInt, addDaysToInt } from './tasks'
 
 // ─────────────────────────────────────────────
 // 1. 纯函数：nextReviewDate
@@ -298,5 +298,128 @@ describe('GET /api/tasks/forecast', () => {
     const wid = createWordbook()
     const res = await request(app).get(`/api/tasks/forecast?student_id=${sid}&wordbook_id=${wid}`)
     expect(res.status).toBe(404)
+  })
+})
+
+// ─────────────────────────────────────────────
+// 4. today_reviewed：今日已复习通过词计数
+// ─────────────────────────────────────────────
+describe('GET /api/tasks/today - today_reviewed 字段', () => {
+  setupTestDb()
+
+  /** 插入复习词掌握度（introduced_date = 昨日，表示已引入的旧词） */
+  function insertReviewMastery(studentId: number, itemId: number, enToZhNext: number) {
+    const yesterday = addDaysToInt(todayInt(), -1)
+    db.prepare(`
+      INSERT INTO student_mastery
+        (student_id, item_id, introduced_date,
+         en_to_zh_stage, en_to_zh_next,
+         zh_to_en_stage, zh_to_en_next,
+         spelling_stage, spelling_next)
+      VALUES (?, ?, ?, 1, ?, 0, 0, 0, 0)
+    `).run(studentId, itemId, yesterday, enToZhNext)
+  }
+
+  /** 创建已完成（passed）的 session 并插入答题记录 */
+  function createFinishedSession(
+    studentId: number,
+    wordbookId: number,
+    items: Array<{ itemId: number; isCorrect: boolean }>,
+  ) {
+    const sessionRes = db.prepare(`
+      INSERT INTO quiz_sessions (student_id, wordbook_id, quiz_type, total_words, status, finished_at)
+      VALUES (?, ?, 'en_to_zh', ?, 'passed', unixepoch())
+    `).run(studentId, wordbookId, items.length)
+    const sessionId = Number(sessionRes.lastInsertRowid)
+    items.forEach(({ itemId, isCorrect }, i) => {
+      db.prepare(`INSERT INTO session_items (session_id, item_id, quiz_type, sort_order) VALUES (?, ?, 'en_to_zh', ?)`)
+        .run(sessionId, itemId, i)
+      db.prepare(`INSERT INTO quiz_answers (session_id, item_id, attempt, user_answer, is_correct) VALUES (?, ?, 1, 'test', ?)`)
+        .run(sessionId, itemId, isCorrect ? 1 : 0)
+    })
+    return sessionId
+  }
+
+  it('today_reviewed 字段存在，无任何 session 时为 0', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    createPlan(sid, wid)
+    const res = await request(app).get(`/api/tasks/today?student_id=${sid}&wordbook_id=${wid}`)
+    expect(res.status).toBe(200)
+    expect(res.body).toHaveProperty('today_reviewed')
+    expect(res.body.today_reviewed).toBe(0)
+  })
+
+  it('已完成 session 中答对的复习词应计入 today_reviewed', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const today = todayInt()
+
+    const iid1 = createItem('rev1', '复习1')
+    const iid2 = createItem('rev2', '复习2')
+    addItemToWordbook(wid, iid1, 0)
+    addItemToWordbook(wid, iid2, 1)
+    // 复习词：introduced yesterday, due today
+    insertReviewMastery(sid, iid1, today)
+    insertReviewMastery(sid, iid2, today)
+    createPlan(sid, wid, 30)
+
+    // 完成 session，两词均答对；同时模拟 finish 把 next 推到未来
+    createFinishedSession(sid, wid, [
+      { itemId: iid1, isCorrect: true },
+      { itemId: iid2, isCorrect: true },
+    ])
+    db.prepare('UPDATE student_mastery SET en_to_zh_stage=2, en_to_zh_next=99991231 WHERE student_id=? AND item_id=?').run(sid, iid1)
+    db.prepare('UPDATE student_mastery SET en_to_zh_stage=2, en_to_zh_next=99991231 WHERE student_id=? AND item_id=?').run(sid, iid2)
+
+    const res = await request(app).get(`/api/tasks/today?student_id=${sid}&wordbook_id=${wid}`)
+    expect(res.status).toBe(200)
+    expect(res.body.today_reviewed).toBe(2)
+  })
+
+  it('今日答错的复习词不计入 today_reviewed', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const today = todayInt()
+
+    const iid1 = createItem('rev3', '复习3')
+    addItemToWordbook(wid, iid1, 0)
+    insertReviewMastery(sid, iid1, today)
+    createPlan(sid, wid, 30)
+
+    createFinishedSession(sid, wid, [{ itemId: iid1, isCorrect: false }])
+
+    const res = await request(app).get(`/api/tasks/today?student_id=${sid}&wordbook_id=${wid}`)
+    expect(res.status).toBe(200)
+    expect(res.body.today_reviewed).toBe(0)
+  })
+
+  it('今日新词（introduced_date = today）不计入 today_reviewed，只计入 today_introduced', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const today = todayInt()
+
+    const iid1 = createItem('new1', '新词1')
+    addItemToWordbook(wid, iid1, 0)
+    // 新词：今天引入（模拟 finish 后写入 introduced_date = today）
+    db.prepare(`
+      INSERT INTO student_mastery (student_id, item_id, introduced_date, en_to_zh_stage, en_to_zh_next)
+      VALUES (?, ?, ?, 1, 99991231)
+    `).run(sid, iid1, today)
+    createPlan(sid, wid, 1)
+
+    // 创建 session，答对新词
+    const sessionRes = db.prepare(`
+      INSERT INTO quiz_sessions (student_id, wordbook_id, quiz_type, total_words, status, finished_at)
+      VALUES (?, ?, 'en_to_zh', 1, 'passed', unixepoch())
+    `).run(sid, wid)
+    const sessionId = Number(sessionRes.lastInsertRowid)
+    db.prepare(`INSERT INTO session_items (session_id, item_id, quiz_type, sort_order) VALUES (?, ?, 'en_to_zh', 0)`).run(sessionId, iid1)
+    db.prepare(`INSERT INTO quiz_answers (session_id, item_id, attempt, user_answer, is_correct) VALUES (?, ?, 1, 'test', 1)`).run(sessionId, iid1)
+
+    const res = await request(app).get(`/api/tasks/today?student_id=${sid}&wordbook_id=${wid}`)
+    expect(res.status).toBe(200)
+    expect(res.body.today_reviewed).toBe(0)         // 新词不计入复习
+    expect(res.body.today_introduced).toBe(1)        // 新词计入引入
   })
 })

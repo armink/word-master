@@ -6,8 +6,10 @@ export function useAudioRecorder() {
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Int16Array[]>([])
+  const onChunkRef = useRef<((buf: ArrayBuffer) => void) | null>(null)
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (onChunk?: (buf: ArrayBuffer) => void) => {
+    onChunkRef.current = onChunk ?? null
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     const ctx = new AudioContext({ sampleRate: 16000 })
     const source = ctx.createMediaStreamSource(stream)
@@ -20,7 +22,11 @@ export function useAudioRecorder() {
       for (let i = 0; i < f32.length; i++) {
         i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767))
       }
-      chunksRef.current.push(new Int16Array(i16))
+      if (onChunkRef.current) {
+        onChunkRef.current(i16.buffer)
+      } else {
+        chunksRef.current.push(new Int16Array(i16))
+      }
     }
 
     source.connect(processor)
@@ -34,6 +40,7 @@ export function useAudioRecorder() {
   }, [])
 
   const stop = useCallback((): ArrayBuffer => {
+    onChunkRef.current = null
     processorRef.current?.disconnect()
     streamRef.current?.getTracks().forEach(t => t.stop())
     contextRef.current?.close()

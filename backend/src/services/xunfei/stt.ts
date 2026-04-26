@@ -6,7 +6,7 @@ import { buildWsAuthUrl } from './auth'
 // lang='en_us' 时设置 ltc=3 只输出英文字符
 type SttLanguage = 'zh_cn' | 'en_us'
 
-interface IatResultText {
+export interface IatResultText {
   sn: number
   pgs?: 'apd' | 'rpl'
   rg?: [number, number]
@@ -14,7 +14,7 @@ interface IatResultText {
   ls?: boolean
 }
 
-function mergeResult(buf: Map<number, string>, result: IatResultText): Map<number, string> {
+export function mergeResult(buf: Map<number, string>, result: IatResultText): Map<number, string> {
   const text = result.ws.map(w => w.cw[0]?.w ?? '').join('')
   const updated = new Map(buf)
   if (!result.pgs || result.pgs === 'apd') {

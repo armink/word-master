@@ -4,6 +4,7 @@ import { getQuizSession, submitAnswer, finishSession, checkChineseAnswer, checkE
 import type { Item, QuizSessionDetail, QuizType } from '@/types'
 import TtsButton from '@/components/TtsButton'
 import VoiceInput from '@/components/VoiceInput'
+import RepeatPanel from '@/components/RepeatPanel'
 import { playCorrect, playWrong } from '@/utils/sound'
 
 type CardState = 'answering' | 'correct' | 'wrong'
@@ -58,8 +59,6 @@ export default function QuizPage() {
   const [finishing, setFinishing] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const [isChecking, setIsChecking] = useState(false)
-  // 答错后「下一个」按钮的倒计时秒数（0 = 可点击，>0 = 锁定中）
-  const [wrongCountdown, setWrongCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const finishingRef = useRef(false)
   // 「不知道」按钮 ref，用原生非被动 touchstart 阻断 Android Chrome 长按「标记为广告」
@@ -91,11 +90,11 @@ export default function QuizPage() {
     }
   }, [cardState, currentItem, currentQuizType])
 
-  // 答错后：自动朗读正确答案 + 启动 4 秒倒计时锁定「下一个」按钮
+  // 答错后：自动朗读正确答案
   useEffect(() => {
     if (cardState !== 'wrong' || !currentItem) return
 
-    // ① 自动朗读正确答案（英译中念中文，中译英念英文）
+    // 自动朗读正确答案（英译中念中文，中译英念英文）
     const ttsText = currentQuizType === 'en_to_zh' ? currentItem.chinese : currentItem.english
     const vcn    = currentQuizType === 'en_to_zh' ? 'xiaoyan' : undefined
     fetch('/api/tts', {
@@ -109,16 +108,6 @@ export default function QuizPage() {
       audio.onended = () => URL.revokeObjectURL(url)
       audio.play().catch(() => {})
     }).catch(() => {})
-
-    // ② 4 秒倒计时，强制用户停留看例句
-    setWrongCountdown(4)
-    const timer = setInterval(() => {
-      setWrongCountdown(prev => {
-        if (prev <= 1) { clearInterval(timer); return 0 }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardState, currentItem?.id])
 
@@ -204,9 +193,6 @@ export default function QuizPage() {
     // 不播错误音："不知道" 只是跳过，不应给孩子施加紧张感
     const first = isFirstAttempt.has(currentItem.id)
     if (first) setIsFirstAttempt(prev => { const s = new Set(prev); s.delete(currentItem.id); return s })
-    // 同步设置 wrongCountdown，确保「下一个」在同一批渲染中就已 disabled，
-    // 防止 ghost click 在 useEffect 更新 wrongCountdown 之前落到「下一个」按钮上
-    setWrongCountdown(4)
     setCardState('wrong')
     try {
       await submitAnswer(Number(sessionId), {
@@ -410,29 +396,19 @@ export default function QuizPage() {
                     <p className="text-center text-xs text-gray-300 mt-2">输入后按回车提交</p>
                   )}
                 </>
-              ) : (
+              ) : isCorrect ? (
                 <button
-                  onClick={() => wrongCountdown === 0 && advanceQueue(isCorrect)}
-                  disabled={wrongCountdown > 0}
-                  className={`w-full py-3.5 rounded-2xl text-base font-bold transition-all overflow-hidden relative
-                    ${isCorrect
-                      ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
-                      : wrongCountdown > 0
-                        ? 'bg-red-200 text-red-400 cursor-not-allowed'
-                        : 'bg-red-400 text-white hover:bg-red-500 active:scale-95'
-                    }`}
+                  onClick={() => advanceQueue(true)}
+                  className="w-full py-3.5 rounded-2xl text-base font-bold bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 transition-all"
                 >
-                  {/* 答错时的进度条背景 */}
-                  {isWrong && wrongCountdown > 0 && (
-                    <span
-                      className="absolute inset-0 bg-red-300 origin-left transition-none"
-                      style={{ transform: `scaleX(${(4 - wrongCountdown) / 4})` }}
-                    />
-                  )}
-                  <span className="relative">
-                    {isCorrect ? '继续 →' : wrongCountdown > 0 ? `再看 ${wrongCountdown} 秒…` : '下一个 →'}
-                  </span>
+                  继续 →
                 </button>
+              ) : (
+                <RepeatPanel
+                  item={currentItem}
+                  quizType={currentQuizType}
+                  onDone={() => advanceQueue(false)}
+                />
               )}
             </div>
 

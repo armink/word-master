@@ -20,23 +20,75 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
   const touchActiveRef = useRef(false)
   const cancelRef  = useRef(false)             // 当前手势是否落在取消区域
   const cancelledDuringConnectRef = useRef(false) // 连接阶段是否已松手
+  const wsRef            = useRef<WebSocket | null>(null)
+  const pendingChunksRef = useRef<ArrayBuffer[]>([])
+  const wsEndedRef       = useRef(false)
+  // 用 ref 保持最新 callback，避免 WS 闭包引用陈旧值
+  const onResultRef      = useRef(onResult)
+  const onErrorRef       = useRef(onError)
   const [connecting,  setConnecting] = useState(false) // 等待麦克风就绪（按钮上显示）
   const [pressing,    setPressing]   = useState(false) // 浮窗已展示，录音进行中
   const [cancelMode,  setCancelMode] = useState(false)
 
-  // ── 开始录音 ────────────────────────────────────────────────────
+  useEffect(() => { onResultRef.current = onResult }, [onResult])
+  useEffect(() => { onErrorRef.current  = onError  }, [onError])
+  // 组件卸载时关闭残留 WS
+  useEffect(() => () => { wsRef.current?.close(); wsRef.current = null }, [])
+
+  // ── 开始录音（同时建立流式 WebSocket） ──────────────────────────
   const doStart = useCallback(async () => {
     if (disabled) return
+    // 关闭上一次残留 WS
+    wsRef.current?.close()
+    wsRef.current = null
+    pendingChunksRef.current = []
+    wsEndedRef.current = false
+
+    // 与申请麦克风权限并行建立 WS，节省约 300ms
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${proto}//${window.location.host}/api/stt/stream?lang=${lang}`)
+    wsRef.current = ws
+
+    // WS 就绪：冲刷积压的音频块
+    ws.onopen = () => {
+      for (const buf of pendingChunksRef.current) ws.send(buf)
+      pendingChunksRef.current = []
+    }
+    // 收到识别结果
+    ws.onmessage = (e: MessageEvent) => {
+      try {
+        const msg = JSON.parse(e.data as string) as { text?: string; error?: string }
+        if (msg.error) {
+          onErrorRef.current?.(msg.error)
+        } else if (msg.text !== undefined) {
+          if (msg.text) onResultRef.current(msg.text)
+          else onErrorRef.current?.('未识别到内容')
+        }
+      } catch { onErrorRef.current?.('解析错误') }
+      if (wsRef.current === ws) wsRef.current = null
+    }
+    ws.onerror = () => {
+      onErrorRef.current?.('网络错误，请重试')
+      if (wsRef.current === ws) wsRef.current = null
+    }
+
+    // 每个音频块：就绪则发送，否则入队等 onopen 冲刷
+    const sendChunk = (buf: ArrayBuffer) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(buf)
+      else if (ws.readyState === WebSocket.CONNECTING) pendingChunksRef.current.push(buf)
+    }
+
     cancelRef.current = false
     cancelledDuringConnectRef.current = false
     setCancelMode(false)
     setConnecting(true)  // 仅更新按钮，不弹浮窗
     try { navigator.vibrate?.(40) } catch { /* 不支持震动忽略 */ }
     try {
-      await start()
+      await start(sendChunk)
       // 连接成功：检查是否已在连接期间松手
       if (cancelledDuringConnectRef.current) {
-        stop()           // 丢弃已录音频，关闭麦克风
+        stop()
+        ws.close(); if (wsRef.current === ws) wsRef.current = null
         setConnecting(false)
         return
       }
@@ -44,6 +96,7 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
       await new Promise<void>(r => setTimeout(r, CONNECT_DELAY))
       if (cancelledDuringConnectRef.current) {
         stop()
+        ws.close(); if (wsRef.current === ws) wsRef.current = null
         setConnecting(false)
         return
       }
@@ -52,6 +105,7 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
       try { navigator.vibrate?.(40) } catch { /* 不支持震动忽略 */ }
     } catch (err) {
       setConnecting(false)
+      ws.close(); if (wsRef.current === ws) wsRef.current = null
       if (!window.isSecureContext) {
         onError?.('需要 HTTPS 才能使用麦克风，请改用 https:// 地址访问')
         return
@@ -63,33 +117,26 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
         onError?.('无法访问麦克风，建议使用 Chrome 或 Safari')
       }
     }
-  }, [disabled, start, stop, onError])
+  }, [disabled, lang, start, stop, onError])
 
-  // ── 结束录音：cancelled=true 时丢弃音频 ─────────────────────────
-  const doStop = useCallback(async (cancelled: boolean) => {
+  // ── 结束录音：cancelled=true 时取消，false 时通知后端 done ───────
+  const doStop = useCallback((cancelled: boolean) => {
     setPressing(false)
     setCancelMode(false)
     cancelRef.current = false
     if (!recording) return
-    const audio = stop()
-    if (cancelled) return
-    try {
-      const res = await fetch(`/api/stt?lang=${lang}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'audio/pcm' },
-        body: audio,
-      })
-      if (!res.ok) {
-        onError?.((await res.json() as { error?: string }).error ?? '识别失败')
-        return
-      }
-      const { text } = await res.json() as { text: string }
-      if (!text) { onError?.('未识别到内容'); return }
-      onResult(text)
-    } catch {
-      onError?.('网络错误，请重试')
+    if (wsEndedRef.current) return  // 防止 touchend+pointerup 重复触发
+    wsEndedRef.current = true
+    stop()  // 停止音频处理器（流式模式不需要返回 buffer）
+    const ws = wsRef.current
+    if (!ws || ws.readyState === WebSocket.CLOSED) return
+    if (cancelled) {
+      ws.close()
+      wsRef.current = null
+    } else {
+      ws.send('done')  // 结果经 ws.onmessage 异步返回
     }
-  }, [recording, stop, lang, onResult, onError])
+  }, [recording, stop])
 
   // ── 按钮 touchstart（passive:false 阻断长按菜单）────────────────
   useEffect(() => {

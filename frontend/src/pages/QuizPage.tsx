@@ -94,20 +94,36 @@ export default function QuizPage() {
   useEffect(() => {
     if (cardState !== 'wrong' || !currentItem) return
 
-    // 自动朗读正确答案（英译中念中文，中译英念英文）
-    const ttsText = currentQuizType === 'en_to_zh' ? currentItem.chinese : currentItem.english
-    const vcn    = currentQuizType === 'en_to_zh' ? 'xiaoyan' : undefined
-    fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: ttsText, ...(vcn ? { vcn } : {}) }),
-    }).then(r => r.ok ? r.blob() : null).then(blob => {
-      if (!blob) return
+    // 获取 TTS blob（不播放）
+    const fetchTtsBlob = (text: string, vcn?: string): Promise<Blob | null> =>
+      fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, ...(vcn ? { vcn } : {}) }),
+      }).then(r => r.ok ? r.blob() : null).catch(() => null)
+
+    // 播放一个 blob，播完 resolve
+    const playBlob = (blob: Blob | null): Promise<void> => {
+      if (!blob) return Promise.resolve()
       const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audio.onended = () => URL.revokeObjectURL(url)
-      audio.play().catch(() => {})
-    }).catch(() => {})
+      return new Promise<void>(resolve => {
+        const audio = new Audio(url)
+        audio.onended = () => { URL.revokeObjectURL(url); resolve() }
+        audio.onerror = () => { URL.revokeObjectURL(url); resolve() }
+        audio.play().catch(resolve)
+      })
+    }
+
+    if (currentQuizType === 'en_to_zh' || currentQuizType === 'zh_to_en') {
+      // 并行请求两段音频，等都就绪后无缝顺序播放
+      Promise.all([
+        fetchTtsBlob(currentItem.english),
+        fetchTtsBlob(currentItem.chinese, 'xiaoyan'),
+      ]).then(([engBlob, zhBlob]) => playBlob(engBlob).then(() => playBlob(zhBlob)))
+    } else {
+      // spelling：只播英文
+      fetchTtsBlob(currentItem.english).then(playBlob)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardState, currentItem?.id])
 

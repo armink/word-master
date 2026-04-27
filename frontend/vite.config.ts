@@ -4,6 +4,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 import path from 'path'
 
 export default defineConfig({
+  base: process.env.NODE_ENV === 'production' ? './' : '/',
   plugins: [react(), basicSsl()],
   resolve: {
     alias: {

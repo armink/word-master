@@ -44,6 +44,10 @@ XUNFEI_API_SECRET=你的APISecret
 # DeepSeek（AI 例句生成，可选）
 DEEPSEEK_API_KEY=你的APIKey
 
+# 子路径部署（可选，根路径部署无需修改）
+# 需与构建镜像时的 --build-arg VITE_BASE_URL 保持一致
+VITE_BASE_URL=/
+
 # 数据库路径（默认 backend/data/word-test.db）
 # DB_PATH=./data/word-test.db
 ```
@@ -146,7 +150,8 @@ word-test/
 ├── docker-compose.yml          # 生产部署配置
 └── .github/
     ├── workflows/
-    │   └── docker-publish.yml  # 自动构建推送镜像
+    │   ├── ci.yml              # PR / push 触发：类型检查 + 测试 + Docker 构建验证
+    │   └── docker-publish.yml  # CI 通过后自动构建推送镜像到 ghcr.io
     └── prompts/
         └── bugfix.prompt.md    # Bug 修复工作流
 ```

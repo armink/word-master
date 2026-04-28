@@ -21,6 +21,10 @@ services:
       - XUNFEI_API_SECRET=${XUNFEI_API_SECRET:-}
       # DeepSeek AI 例句生成（可选）
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      # 子路径部署时设置（需与镜像构建时的 VITE_BASE_URL 一致）
+      - VITE_BASE_URL=${VITE_BASE_URL:-/}
+      # 前后端分开部署时才需要配置（同源部署留空）
+      - CORS_ORIGIN=${CORS_ORIGIN:-}
     restart: unless-stopped
 
 volumes:

@@ -3,6 +3,11 @@
 # ─────────────────────────────────────────────────────────────
 FROM node:20-slim AS frontend-build
 
+# 子路径部署时传入，如：docker build --build-arg VITE_BASE_URL=/word-master/ .
+# 默认 / 表示根路径部署
+ARG VITE_BASE_URL=/
+ENV VITE_BASE_URL=$VITE_BASE_URL
+
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci

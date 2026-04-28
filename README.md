@@ -151,9 +151,39 @@ XUNFEI_API_SECRET=你的APISecret
 
 # DeepSeek（AI 例句生成）— 可选
 DEEPSEEK_API_KEY=你的APIKey
+
+# 子路径部署（可选）— 同一域名下通过不同路径区分多个应用时配置
+# 需与构建镜像时的 --build-arg VITE_BASE_URL 保持一致，默认根路径无需填写
+VITE_BASE_URL=/
 ```
 
 讯飞 API 申请地址：[https://www.xfyun.cn](https://www.xfyun.cn)
+
+#### 子路径部署（Nginx 反向代理）
+
+如果服务器上有多个 Docker 应用共用同一域名，需要通过路径区分，例如 `https://yourdomain.com/word-master/`：
+
+**第一步：构建带路径的镜像**
+
+```bash
+docker build --build-arg VITE_BASE_URL=/word-master/ -t word-master .
+```
+
+**第二步：`.env` 中设置相同路径**
+
+```env
+VITE_BASE_URL=/word-master/
+```
+
+**第三步：Nginx 反向代理**
+
+```nginx
+location /word-master/ {
+    proxy_pass http://127.0.0.1:3000/word-master/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
 
 ### 数据持久化
 

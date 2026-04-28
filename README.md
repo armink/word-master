@@ -154,7 +154,7 @@ DEEPSEEK_API_KEY=你的APIKey
 
 # 子路径部署（可选）— 同一域名下通过不同路径区分多个应用时配置
 # 需与构建镜像时的 --build-arg VITE_BASE_URL 保持一致，默认根路径无需填写
-VITE_BASE_URL=/
+APP_BASE_PATH=/
 ```
 
 讯飞 API 申请地址：[https://www.xfyun.cn](https://www.xfyun.cn)
@@ -172,7 +172,7 @@ docker build --build-arg VITE_BASE_URL=/word-master/ -t word-master .
 **第二步：`.env` 中设置相同路径**
 
 ```env
-VITE_BASE_URL=/word-master/
+APP_BASE_PATH=/word-master/
 ```
 
 **第三步：Nginx 反向代理**

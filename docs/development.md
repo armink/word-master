@@ -46,7 +46,7 @@ DEEPSEEK_API_KEY=你的APIKey
 
 # 子路径部署（可选，根路径部署无需修改）
 # 需与构建镜像时的 --build-arg VITE_BASE_URL 保持一致
-VITE_BASE_URL=/
+APP_BASE_PATH=/
 
 # 数据库路径（默认 backend/data/word-test.db）
 # DB_PATH=./data/word-test.db

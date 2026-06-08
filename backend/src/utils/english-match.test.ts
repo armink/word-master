@@ -103,3 +103,29 @@ describe('matchEnglishAnswer - 短语省略号 ... 占位符容错', () => {
     expect(matchEnglishAnswer('give a lesson to somebody', 'take a nap')).toBe(false)
   })
 })
+
+describe('matchEnglishAnswer - 同音词模糊匹配（STT 误识别容错）', () => {
+  it('STT 将 now 误识别为 know 应匹配：now that → know that', () => {
+    expect(matchEnglishAnswer('now that', 'know that')).toBe(true)
+  })
+
+  it('STT 多词短语中部分误识别应匹配：look forward to → look forward too', () => {
+    expect(matchEnglishAnswer('look forward to', 'look forward too')).toBe(true)
+  })
+
+  it('完全不同的词不应模糊匹配：cat → hat', () => {
+    expect(matchEnglishAnswer('cat', 'hat')).toBe(false)
+  })
+
+  it('含义完全不同的短词不应模糊匹配：on → in', () => {
+    expect(matchEnglishAnswer('on', 'in')).toBe(false)
+  })
+
+  it('精确匹配仍优先生效', () => {
+    expect(matchEnglishAnswer('give a lesson', 'give a lesson')).toBe(true)
+  })
+
+  it('模糊匹配不影响 sb./sth. 缩写 + ... 组合场景', () => {
+    expect(matchEnglishAnswer('give sth. to sb. ...', 'give something to somebody')).toBe(true)
+  })
+})

@@ -11,6 +11,29 @@ let embedder: FeaturePipeline | null = null
 let modelUnavailable = false   // 模型加载失败后设为 true，回退到关键词模式
 let loadingPromise: Promise<FeaturePipeline> | null = null
 
+/**
+ * LLM 语义验证器（可选注入）
+ *
+ * 当 MiniLM 分数处于灰色地带时调用，用于最终判定两个中文短语是否语义等价。
+ * 由 app 启动时通过 setLlmVerifier() 注入 DeepSeek 实现；不注入时灰色地带回退到纯阈值判断。
+ * 测试中可替换为 mock 实现。
+ */
+export type LlmVerifier = (standard: string, answer: string) => Promise<{ match: boolean; reason: string }>
+let _llmVerifier: LlmVerifier | null = null
+
+/** 注入 LLM 语义验证器（应在 app 启动时调用） */
+export function setLlmVerifier(v: LlmVerifier | null): void {
+  _llmVerifier = v
+}
+
+/** 灰色地带阈值：MiniLM 分数在此区间时触发 LLM 二次验证 */
+export const LLM_GRAY_ZONE = {
+  /** 低于此值视为明确不匹配，直接拒绝 */
+  low: 0.60,
+  /** 高于等于此值视为明确匹配，直接通过 */
+  high: 0.85,
+}
+
 async function getEmbedder(): Promise<FeaturePipeline | null> {
   if (modelUnavailable) return null
   if (embedder) return embedder
@@ -75,7 +98,7 @@ function toPinyinNoTone(s: string): string {
 export async function checkSemanticMatch(
   standard: string,
   userAnswer: string,
-): Promise<{ match: boolean; score: number; method: 'exact' | 'pinyin' | 'keyword' | 'semantic' }> {
+): Promise<{ match: boolean; score: number; method: 'exact' | 'pinyin' | 'keyword' | 'semantic' | 'llm' }> {
   // 支持分号分隔的多义项（如「查寻；抬头看」），任一义项匹配即通过
   const segments = standard.split('；').map(s => s.trim()).filter(Boolean)
   if (segments.length > 1) {
@@ -146,7 +169,34 @@ export async function checkSemanticMatch(
     return { match: false, score: 0, method: 'keyword' }
   }
   const score = await cosineSimilarity(standard, userAnswer)
-  // 阈值 0.76：经实测，真近义词最低分（好看↔美丽）= 0.771，
-  // 跨义形容词（小气↔温柔）= 0.756，0.76 刚好在两者之间。
+
+  // ── 灰色地带判定 ──────────────────────────────────────────────
+  // MiniLM 对中文短语的区分能力有限，完全无关的短语（如"下决心"与"指导作用"）
+  // 可能被误判为高分。因此将 MiniLM 分数分为三区：
+  //   [0.85, 1.0]  高置信匹配 → 直接通过
+  //   [0.60, 0.85) 灰色地带   → 有 LLM 则问 LLM，无则回退 0.76 阈值
+  //   [0,   0.60)  高置信拒绝 → 直接拒绝
+  if (score >= LLM_GRAY_ZONE.high) {
+    return { match: true, score, method: 'semantic' }
+  }
+  if (score < LLM_GRAY_ZONE.low) {
+    return { match: false, score, method: 'semantic' }
+  }
+
+  // 灰色地带：尝试 LLM 二次验证
+  if (_llmVerifier) {
+    try {
+      const llmResult = await _llmVerifier(standard, userAnswer)
+      return {
+        match: llmResult.match,
+        score,
+        method: 'llm' as const,
+      }
+    } catch (err) {
+      console.warn('[semantic] LLM 验证失败，回退至 MiniLM 阈值:', (err as Error).message)
+    }
+  }
+
+  // 无 LLM 或 LLM 失败：回退至原 0.76 阈值
   return { match: score >= 0.76, score, method: 'semantic' }
 }

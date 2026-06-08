@@ -81,3 +81,71 @@ export async function generateExample(english: string, chinese: string): Promise
     example_zh: parsed.example_zh.trim(),
   }
 }
+
+/**
+ * 中文语义等价验证（LLM 兜底）
+ *
+ * 当 MiniLM 向量相似度处于灰色地带（0.60–0.85）时，
+ * 调用 DeepSeek 做最终语义判定，弥补小模型对中文短语区分能力不足的问题。
+ *
+ * @returns match 是否语义等价，reason 简短理由
+ */
+export async function verifyChineseSemanticMatch(
+  standard: string,
+  answer: string,
+): Promise<{ match: boolean; reason: string }> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY 未配置')
+
+  const systemPrompt = `你是一个中文语义判定助手。你的任务是判断两个中文短语是否语义等价（同义/近义）。
+
+判定规则：
+1. 同义词/近义词 → 等价（如"美丽"和"好看"等价，"下决心"和"做决定"等价）
+2. 包含关系 → 等价（如用户说"下定决心"对应标准"下决心"，包含关键词）
+3. 语义完全不同 → 不等价（如"下决心"和"指导作用"不等价）
+4. 反义词 → 不等价（如"美丽"和"丑陋"不等价）
+
+请严格只输出 JSON，不要有任何其他文字。`
+
+  const userPrompt = `标准答案：${standard}\n用户答案：${answer}\n\n请判断这两个中文短语是否语义等价，输出 JSON：\n{"match": true/false, "reason": "一句话理由"}`
+
+  const resp = await fetch(DEEPSEEK_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0,
+      max_tokens: 100,
+      response_format: { type: 'json_object' },
+    }),
+  })
+
+  if (!resp.ok) {
+    const body = await resp.text()
+    throw new Error(`DeepSeek API error ${resp.status}: ${body}`)
+  }
+
+  const data = await resp.json() as {
+    choices: { message: { content: string } }[]
+  }
+
+  const content = data.choices?.[0]?.message?.content
+  if (!content) throw new Error('DeepSeek 返回内容为空')
+
+  const parsed = JSON.parse(content) as { match?: boolean; reason?: string }
+  if (typeof parsed.match !== 'boolean') {
+    throw new Error(`DeepSeek 返回格式不正确: ${content}`)
+  }
+
+  return {
+    match: parsed.match,
+    reason: parsed.reason ?? (parsed.match ? '语义等价' : '语义不等价'),
+  }
+}

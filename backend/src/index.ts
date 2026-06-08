@@ -1,10 +1,16 @@
 import http from 'http'
 import { WebSocketServer } from 'ws'
 import app from './app'
-import { warmupSemantic } from './services/semantic'
+import { warmupSemantic, setLlmVerifier } from './services/semantic'
+import { verifyChineseSemanticMatch } from './services/deepseek'
 import { handleSttStream } from './routes/stt'
 
 const PORT = Number(process.env.PORT ?? 3000)
+
+// 注入 LLM 语义验证器（有 DEEPSEEK_API_KEY 时启用灰色地带 LLM 兜底）
+if (process.env.DEEPSEEK_API_KEY) {
+  setLlmVerifier(verifyChineseSemanticMatch)
+}
 
 const server = http.createServer(app)
 

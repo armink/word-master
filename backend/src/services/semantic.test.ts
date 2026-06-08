@@ -12,9 +12,9 @@
  *  真近义词最低分（好看↔美丽）= 0.771，跨义形容词（小气↔温柔）= 0.756，
  *  0.76 刚好在两者之间。
  */
-import { test, describe, before } from 'node:test'
+import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { checkSemanticMatch, warmupSemantic, isSemanticModelReady } from './semantic.js'
+import { checkSemanticMatch, warmupSemantic, isSemanticModelReady, setLlmVerifier, type LlmVerifier } from './semantic.js'
 
 interface Case {
   standard: string
@@ -165,6 +165,99 @@ describe('语义匹配 - checkSemanticMatch', () => {
         // 不 assert，仅记录，不阻断 CI
       })
     }
+  })
+
+  // ── Bug 修复：完全无关的中文短语被语义模型误判为匹配 ─────────
+  // 根因：MiniLM 对零字符重叠的中文短语可能给出 ≥0.76 的相似度
+  // 修复：Stage 3 灰色地带 (0.60–0.85) 引入 LLM 二次验证
+  describe('完全无关中文短语不应匹配（Bug 修复验证）', () => {
+    // Mock LLM 验证器：模拟 DeepSeek 的正确语义判断
+    const mockLLM: LlmVerifier = async (standard, answer) => {
+      // 已知的无关词对 → 拒绝
+      const unrelatedPairs = [
+        ['下决心', '指导作用'],
+        ['下决心', '副作用'],
+      ]
+      for (const [s, a] of unrelatedPairs) {
+        if (standard === s && answer === a) return { match: false, reason: '语义无关' }
+      }
+      // 已知的近义词对 → 接受
+      const synonymPairs = [
+        ['下决心', '做决定'],
+      ]
+      for (const [s, a] of synonymPairs) {
+        if (standard === s && answer === a) return { match: true, reason: '近义词' }
+      }
+      // 未匹配到的走默认（本测试块不应到达这里）
+      return { match: false, reason: '未在已知列表中' }
+    }
+
+    before(() => {
+      setLlmVerifier(mockLLM)
+    })
+
+    after(() => {
+      setLlmVerifier(null)
+    })
+
+    // 若模型未加载，这些测试依赖 Stage 3 语义路径，无法执行
+    const requireModel = () => {
+      if (!isSemanticModelReady()) {
+        console.warn('  [跳过-无模型] 语义模型未加载，跳过 LLM 无关短语测试')
+        return false
+      }
+      return true
+    }
+
+    test('下决心 vs 指导作用 — 完全无关，应拒绝（LLM 兜底）', async () => {
+      if (!requireModel()) return
+      const result = await checkSemanticMatch('下决心', '指导作用')
+      assert.equal(
+        result.match, false,
+        `"下决心" vs "指导作用": 期望 ❌不匹配，` +
+        `实际 method=${result.method} score=${result.score.toFixed(3)}`
+      )
+      // 应走 LLM 路径（因为 MiniLM score=0.811 在灰色地带）
+      assert.equal(result.method, 'llm', '应通过 LLM 判定而非纯 MiniLM')
+    })
+
+    test('下决心 vs 副作用 — 完全无关，应拒绝', async () => {
+      if (!requireModel()) return
+      const result = await checkSemanticMatch('下决心', '副作用')
+      assert.equal(
+        result.match, false,
+        `"下决心" vs "副作用": 期望 ❌不匹配，` +
+        `实际 method=${result.method} score=${result.score.toFixed(3)}`
+      )
+    })
+
+    test('下决心 vs 做决定 — 近义短语，应接受（LLM 兜底）', async () => {
+      if (!requireModel()) return
+      const result = await checkSemanticMatch('下决心', '做决定')
+      assert.equal(
+        result.match, true,
+        `"下决心" vs "做决定": 期望 ✅匹配（近义），` +
+        `实际 method=${result.method} score=${result.score.toFixed(3)}`
+      )
+      assert.equal(result.method, 'llm', '应通过 LLM 判定近义关系')
+    })
+
+    test('下决心 vs 下决心 — 精确匹配，应接受（不走 LLM）', async () => {
+      if (!requireModel()) return
+      const result = await checkSemanticMatch('下决心', '下决心')
+      assert.equal(result.match, true, '精确匹配必须通过')
+      assert.equal(result.method, 'exact', '精确匹配应走 Stage 1')
+    })
+
+    test('与…交朋友 vs 交朋友 — 关键词包含，应接受（不走 LLM）', async () => {
+      if (!requireModel()) return
+      const result = await checkSemanticMatch('与…交朋友', '交朋友')
+      assert.equal(
+        result.match, true,
+        `"与…交朋友" vs "交朋友": 期望 ✅匹配（包含关键词），` +
+        `实际 method=${result.method} score=${result.score.toFixed(3)}`
+      )
+    })
   })
 })
 

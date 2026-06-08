@@ -4,7 +4,14 @@
  */
 
 function norm(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.!?,;。！？，；]+$/, '')
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?,;。！？，；]+$/, '')
+    .split(' ')
+    .filter(t => t !== '...' && t !== '')
+    .join(' ')
 }
 
 /**

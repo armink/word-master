@@ -77,3 +77,29 @@ describe('matchEnglishAnswer - 语音识别末尾标点容错', () => {
     expect(matchEnglishAnswer('give a lesson to sb.', 'give a lesson to somebody.')).toBe(true)
   })
 })
+
+describe('matchEnglishAnswer - 短语省略号 ... 占位符容错', () => {
+  it('标准答案含 ... 占位符，用户语音不含省略号应匹配：stop ... from ...', () => {
+    expect(matchEnglishAnswer('stop ... from ...', 'stop from')).toBe(true)
+  })
+
+  it('标准答案含末尾 ... 占位符，用户语音不含省略号应匹配：take in ...', () => {
+    expect(matchEnglishAnswer('take in ...', 'take in')).toBe(true)
+  })
+
+  it('标准答案含 ... 占位符，用户语音不含省略号应匹配：show no interest in ...', () => {
+    expect(matchEnglishAnswer('show no interest in ...', 'show no interest in')).toBe(true)
+  })
+
+  it('标准答案含 ... 且同时有 sb./sth. 缩写，用户语音不含省略号应匹配', () => {
+    expect(matchEnglishAnswer('give sth. to sb. ...', 'give something to somebody')).toBe(true)
+  })
+
+  it('标准答案无 ... 时行为不变：精确匹配仍生效', () => {
+    expect(matchEnglishAnswer('give a lesson to somebody', 'give a lesson to somebody')).toBe(true)
+  })
+
+  it('标准答案无 ... 时不匹配行为不变', () => {
+    expect(matchEnglishAnswer('give a lesson to somebody', 'take a nap')).toBe(false)
+  })
+})

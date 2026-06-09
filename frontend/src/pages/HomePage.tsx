@@ -5,6 +5,7 @@ import { useStudent } from '@/hooks/useStudent'
 import { useWordbook } from '@/hooks/useWordbook'
 import type { Student, Wordbook, TodayTask, PetStatus, Forecast } from '@/types'
 import LearningForecastChart from '@/components/LearningForecastChart'
+import VersionTag from '@/components/VersionTag'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -278,6 +279,9 @@ export default function HomePage() {
         </div>
         <span className="text-gray-300 text-lg">›</span>
       </button>
+
+      {/* ── 版本信息 ──────────────────────────────────── */}
+      <VersionTag />
 
       {/* ── 选学生弹窗 ──────────────────────────────────── */}
       {showPicker && (

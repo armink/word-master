@@ -12,6 +12,14 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+
+# 获取 git SHA 写入 .env，供 Vite 构建时注入（无需手动传 --build-arg）
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+COPY .git/ ./.git/
+RUN echo "VITE_GIT_SHA=$(git rev-parse --short HEAD)" >> .env \
+    && rm -rf .git
+
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────

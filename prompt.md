@@ -77,7 +77,7 @@
 ### 技术栈
 - 前端：React 19 + TypeScript + Vite + Tailwind CSS，端口 5173
 - 后端：Node.js + Express + TypeScript + better-sqlite3，端口 3000
-- 数据库：SQLite，`backend/data/word-test.db`
+- 数据库：SQLite，`backend/data/word-master.db`
 - monorepo 结构：`frontend/` + `backend/`
 
 ### 项目目录结构

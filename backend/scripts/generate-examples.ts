@@ -22,7 +22,7 @@ import { generateExample } from '../src/services/deepseek'
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') })
 
-const DB_PATH = process.env.DB_PATH ?? path.join(__dirname, '..', 'data', 'word-test.db')
+const DB_PATH = process.env.DB_PATH ?? path.join(__dirname, '..', 'data', 'word-master.db')
 const db = new Database(DB_PATH)
 
 // ── CLI 参数解析 ──────────────────────────────────────────────────

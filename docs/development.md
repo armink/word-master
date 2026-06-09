@@ -48,8 +48,8 @@ DEEPSEEK_API_KEY=你的APIKey
 # 需与构建镜像时的 --build-arg VITE_BASE_URL 保持一致
 APP_BASE_PATH=/
 
-# 数据库路径（默认 backend/data/word-test.db）
-# DB_PATH=./data/word-test.db
+# 数据库路径（默认 backend/data/word-master.db）
+# DB_PATH=./data/word-master.db
 ```
 
 > 讯飞语音非必须，不配置时语音输入和朗读功能不可用，其余功能正常。
@@ -115,7 +115,7 @@ npm run test:coverage
 ## 项目结构
 
 ```
-word-test/
+word-master/
 ├── backend/                    # Express API 服务
 │   ├── src/
 │   │   ├── app.ts              # Express 应用（路由 + 中间件）

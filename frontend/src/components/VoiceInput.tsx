@@ -13,6 +13,8 @@ interface Props {
 const BARS = [8, 14, 22, 10, 30, 18, 14, 26, 34, 18, 26, 14, 22, 10, 18, 8]
 // 连接成功后延迟展示浮窗，留出余量避免用户立刻说话
 const CONNECT_DELAY = 150
+// 松手后延迟结束录音，继续采集尾词（ms）
+const END_DELAY = 300
 
 export default function VoiceInput({ lang, onResult, onError, disabled }: Props) {
   const { recording, start, stop } = useAudioRecorder()
@@ -29,11 +31,16 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
   const [connecting,  setConnecting] = useState(false) // 等待麦克风就绪（按钮上显示）
   const [pressing,    setPressing]   = useState(false) // 浮窗已展示，录音进行中
   const [cancelMode,  setCancelMode] = useState(false)
+  const [ending,      setEnding]     = useState(false) // 松手后延迟结束中
+  const endingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => { onResultRef.current = onResult }, [onResult])
   useEffect(() => { onErrorRef.current  = onError  }, [onError])
-  // 组件卸载时关闭残留 WS
-  useEffect(() => () => { wsRef.current?.close(); wsRef.current = null }, [])
+  // 组件卸载时关闭残留 WS 并清除延迟定时器
+  useEffect(() => () => {
+    if (endingTimerRef.current) clearTimeout(endingTimerRef.current)
+    wsRef.current?.close(); wsRef.current = null
+  }, [])
 
   // ── 开始录音（同时建立流式 WebSocket） ──────────────────────────
   const doStart = useCallback(async () => {
@@ -119,24 +126,47 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
     }
   }, [disabled, lang, start, stop, onError])
 
-  // ── 结束录音：cancelled=true 时取消，false 时通知后端 done ───────
+  // ── 结束录音：取消立即停止，发送延迟 END_DELAY ms 以捕获尾词 ──
   const doStop = useCallback((cancelled: boolean) => {
-    setPressing(false)
-    setCancelMode(false)
-    cancelRef.current = false
     if (!recording) return
     if (wsEndedRef.current) return  // 防止 touchend+pointerup 重复触发
     wsEndedRef.current = true
-    stop()  // 停止音频处理器（流式模式不需要返回 buffer）
-    const ws = wsRef.current
-    if (!ws || ws.readyState === WebSocket.CLOSED) return
+    setCancelMode(false)
+    cancelRef.current = false
     if (cancelled) {
-      ws.close()
-      wsRef.current = null
+      // 取消：立即停止
+      setPressing(false)
+      setEnding(false)
+      stop()
+      const ws = wsRef.current
+      if (ws && ws.readyState !== WebSocket.CLOSED) {
+        ws.close()
+        wsRef.current = null
+      }
     } else {
-      ws.send('done')  // 结果经 ws.onmessage 异步返回
+      // 发送：延迟结束，期间继续采集尾词
+      setEnding(true)
+      endingTimerRef.current = setTimeout(() => {
+        setEnding(false)
+        setPressing(false)
+        stop()
+        const ws = wsRef.current
+        if (ws && ws.readyState !== WebSocket.CLOSED) {
+          ws.send('done')  // 结果经 ws.onmessage 异步返回
+        }
+      }, END_DELAY)
     }
   }, [recording, stop])
+
+  // ── 取消延迟结束，继续录音 ──────────────────────────────────────
+  const cancelEnding = useCallback(() => {
+    if (endingTimerRef.current) {
+      clearTimeout(endingTimerRef.current)
+      endingTimerRef.current = null
+    }
+    wsEndedRef.current = false
+    setEnding(false)
+  }, [])
 
   // ── 按钮 touchstart（passive:false 阻断长按菜单）────────────────
   useEffect(() => {
@@ -174,8 +204,8 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0]
       if (!t) return
-      // 取消区：手指滑到底部区域（屏幕底部 38%）
-      const inCancel = t.clientY > window.innerHeight * 0.62
+      // 取消区：手指滑到底部 h-32 可视区域（128px）
+      const inCancel = t.clientY > window.innerHeight - 128
       cancelRef.current = inCancel
       setCancelMode(inCancel)
     }
@@ -214,13 +244,16 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
   }, [doStop])
 
   // ── 全屏录音遮罩（Portal，真正全屏覆盖） ────────────────────────
-  const overlay = pressing ? createPortal(
+  const overlay = (pressing || ending) ? createPortal(
     <div
       className="fixed inset-0 z-50 flex flex-col"
       style={{ background: 'rgba(0,0,0,0.55)', touchAction: 'none', userSelect: 'none' }}
     >
       {/* 中央波形气泡 */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+      <div
+        className="flex-1 flex flex-col items-center justify-center gap-4"
+        onClick={ending ? cancelEnding : undefined}
+      >
         <div className="bg-[#4CAF50] rounded-2xl px-6 py-5 flex items-end gap-1.5">
           {BARS.map((h, i) => (
             <div
@@ -235,7 +268,7 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
           ))}
         </div>
         <p className="text-white/70 text-sm">
-          {cancelMode ? '松开即可取消' : '松开发送'}
+          {ending ? '录音即将结束' : cancelMode ? '松开即可取消' : '松开发送'}
         </p>
       </div>
 
@@ -279,7 +312,7 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
             : 'bg-primary-100 text-primary-700 border-2 border-primary-200 hover:bg-primary-200'
           } disabled:opacity-40 disabled:cursor-not-allowed`}
       >
-        {pressing || recording ? '🎤 录音中…' : connecting ? '连接中…' : '🎤 按住说话'}
+        {ending ? '🎤 即将结束…' : pressing || recording ? '🎤 录音中…' : connecting ? '连接中…' : '🎤 按住说话'}
       </button>
     </>
   )

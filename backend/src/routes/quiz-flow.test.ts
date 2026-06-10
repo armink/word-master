@@ -1007,3 +1007,82 @@ describe('target_level 解锁链控制', () => {
     expect(m?.spelling_stage).toBe(0)  // phrase 不解锁 spelling
   })
 })
+
+// ══════════════════════════════════════════════════════════════════════
+// 11. 每日累计上限（daily_peak 跨 session 生效）
+// ══════════════════════════════════════════════════════════════════════
+describe('每日累计上限 daily_peak', () => {
+  /** 创建带指定 daily_peak 的计划 */
+  function setDailyPeak(sid: number, wid: number, dailyPeak: number) {
+    db.prepare(`
+      UPDATE study_plans SET daily_peak = ? WHERE student_id = ? AND wordbook_id = ?
+    `).run(dailyPeak, sid, wid)
+  }
+
+  it('复习词跨 session 累计不应超过 daily_peak', async () => {
+    // 创建 10 个词 + 全部设为今日到期复习词
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemIds: number[] = []
+    for (let i = 0; i < 10; i++) {
+      const id = createItem(`word${i}`, `词${i}`, 'word')
+      addItemToWordbook(wid, id, i)
+      itemIds.push(id)
+    }
+    // 全部插入 mastery：昨日引入、stage=1、今日到期 → 复习词
+    for (const itemId of itemIds) {
+      insertMastery({ studentId: sid, itemId })
+    }
+    // remaining_days 设大一点，避免新词配额干扰（所有词都已是复习词）
+    createPlan(sid, wid, 30)
+    setDailyPeak(sid, wid, 6)
+
+    // 第一轮：daily_peak=6，应返回 6 个复习词
+    const first = await apiStartTask(sid, wid)
+    expect(first.status).toBe(201)
+    const items1 = (first.body as { items: Array<{ id: number }> }).items
+    expect(items1.length).toBe(6)
+
+    // 全部答对并 finish
+    for (const item of items1) {
+      await apiAnswer(first.body.session.id, item.id, true)
+    }
+    await apiFinish(first.body.session.id)
+
+    // 第二轮：已做 6 个复习词 = daily_peak，不应再有词
+    const second = await apiStartTask(sid, wid)
+    // Bug 表现：未修复时这里返回 201 + 剩余 4 个词，总数 10 > daily_peak=6
+    // 修复后：返回 400（今日没有待学习/复习的词条）
+    expect(second.status).toBe(400)
+    expect(second.body.error).toMatch(/没有/)
+  })
+
+  it('今日复习配额用完后再 start 返回 400', async () => {
+    const sid = createStudent()
+    const wid = createWordbook()
+    const itemIds: number[] = []
+    for (let i = 0; i < 8; i++) {
+      const id = createItem(`w${i}`, `词${i}`, 'word')
+      addItemToWordbook(wid, id, i)
+      itemIds.push(id)
+      insertMastery({ studentId: sid, itemId: id })
+    }
+    createPlan(sid, wid, 30)
+    setDailyPeak(sid, wid, 5)
+
+    // 第一轮完成 5 个（正好 daily_peak）
+    const first = await apiStartTask(sid, wid)
+    expect(first.status).toBe(201)
+    const items = (first.body as { items: Array<{ id: number }> }).items
+    expect(items.length).toBe(5)
+    for (const item of items) {
+      await apiAnswer(first.body.session.id, item.id, true)
+    }
+    await apiFinish(first.body.session.id)
+
+    // 第二轮：应返回 400（配额已用完）
+    const second = await apiStartTask(sid, wid)
+    expect(second.status).toBe(400)
+    expect(second.body.error).toMatch(/没有/)
+  })
+})

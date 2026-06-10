@@ -128,16 +128,38 @@ function buildTodayItems(
     .filter(Boolean)
     .filter(item => !correctInProgress.has((item as TodayTaskItem).item_id)) as TodayTaskItem[]
 
-  // 应用峰值上限（超出的词次日自动到期，无需额外操作）
-  const reviewItems = allReviewItems.slice(0, dailyPeak)
-
-  // ── 2. 今日新词配额计算 ──────────────────────────────────────────
+  // ── 2. 今日已完成的词数统计（用于每日累计上限）─────────────────
   const todayIntroduced = (db.prepare(`
     SELECT COUNT(*) AS c FROM student_mastery sm
     JOIN wordbook_items wi ON wi.item_id = sm.item_id AND wi.wordbook_id = ?
     WHERE sm.student_id = ? AND sm.introduced_date = ?
   `).get(wordbookId, studentId, today) as { c: number }).c
 
+  // 今日已完成的复习词数（已完成 session 中答对的、非今日新引入的词）
+  const d = new Date(); d.setHours(0, 0, 0, 0)
+  const todayStartUnix = Math.floor(d.getTime() / 1000)
+  const todayReviewed = (db.prepare(`
+    SELECT COUNT(DISTINCT qa.item_id) AS c
+    FROM quiz_answers qa
+    JOIN quiz_sessions qs ON qs.id = qa.session_id
+    JOIN student_mastery sm ON sm.student_id = qs.student_id AND sm.item_id = qa.item_id
+    WHERE qs.student_id = ?
+      AND qs.wordbook_id = ?
+      AND qs.status IN ('passed', 'abandoned')
+      AND qs.started_at >= ?
+      AND qa.is_correct = 1
+      AND sm.introduced_date > 0
+      AND sm.introduced_date < ?
+  `).get(studentId, wordbookId, todayStartUnix, today) as { c: number }).c
+
+  // 每日累计上限 = dailyPeak − 今日已完成的（复习+新词）
+  const todayTotalDone = todayReviewed + todayIntroduced
+  const remainingDailyCapacity = Math.max(0, dailyPeak - todayTotalDone)
+
+  // 应用每日累计上限截断复习词（超出的词次日自动到期，无需额外操作）
+  const reviewItems = allReviewItems.slice(0, remainingDailyCapacity)
+
+  // ── 3. 今日新词配额计算 ──────────────────────────────────────────
   // 还未引入的词数（introduced_date = 0 或不在 mastery 表中）
   const totalUnintroduced = (db.prepare(`
     SELECT COUNT(*) AS c FROM wordbook_items wi
@@ -155,8 +177,8 @@ function buildTodayItems(
   const remainingDays = Math.max(1, plan.remaining_days ?? 30)
   const dailyNewQuota = Math.ceil(totalForQuota / remainingDays)
 
-  // 今日新词槽位 = daily_peak - 复习词数；与配额取较小值，再扣除今日已引入数
-  const newSlots = Math.max(0, dailyPeak - reviewItems.length)
+  // 今日新词槽位 = 剩余每日容量 − 复习词数；与配额取较小值，再扣除今日已引入数
+  const newSlots = Math.max(0, remainingDailyCapacity - reviewItems.length)
   const dailyNewForSession = Math.max(0, Math.min(dailyNewQuota, newSlots) - todayIntroduced)
 
   const newRows = db.prepare(`
@@ -183,25 +205,7 @@ function buildTodayItems(
     items: [...reviewItems, ...newItems],
     in_progress_answered: correctInProgress.size,
     today_introduced: todayIntroduced,
-    today_reviewed: (() => {
-      // 今日已完成（passed/abandoned）session 中答对的复习词数
-      // 复习词 = introduced_date > 0 且 introduced_date < today（非今日新引入）
-      const d = new Date(); d.setHours(0, 0, 0, 0)
-      const todayStartUnix = Math.floor(d.getTime() / 1000)
-      return (db.prepare(`
-        SELECT COUNT(DISTINCT qa.item_id) AS c
-        FROM quiz_answers qa
-        JOIN quiz_sessions qs ON qs.id = qa.session_id
-        JOIN student_mastery sm ON sm.student_id = qs.student_id AND sm.item_id = qa.item_id
-        WHERE qs.student_id = ?
-          AND qs.wordbook_id = ?
-          AND qs.status IN ('passed', 'abandoned')
-          AND qs.started_at >= ?
-          AND qa.is_correct = 1
-          AND sm.introduced_date > 0
-          AND sm.introduced_date < ?
-      `).get(studentId, wordbookId, todayStartUnix, today) as { c: number }).c
-    })(),
+    today_reviewed: todayReviewed,
     total_unintroduced: totalUnintroduced,
   }
 }

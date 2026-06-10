@@ -174,9 +174,8 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0]
       if (!t) return
-      // 取消区：手指滑到屏幕左侧 38% 且高于屏幕底部 38%
-      const inCancel = t.clientX < window.innerWidth * 0.38
-        && t.clientY > window.innerHeight * 0.62
+      // 取消区：手指滑到底部区域（屏幕底部 38%）
+      const inCancel = t.clientY > window.innerHeight * 0.62
       cancelRef.current = inCancel
       setCancelMode(inCancel)
     }
@@ -236,14 +235,13 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
           ))}
         </div>
         <p className="text-white/70 text-sm">
-          {cancelMode ? '松开即可取消' : '松开发送，向左滑动取消'}
+          {cancelMode ? '松开即可取消' : '松开发送'}
         </p>
       </div>
 
-      {/* 底部操作区 */}
+      {/* 底部操作区：统一取消区 */}
       <div className="h-32 flex select-none">
-        {/* 左：取消区 */}
-        <div className={`w-[38%] flex flex-col items-center justify-center gap-2 transition-colors duration-150
+        <div className={`flex-1 flex flex-col items-center justify-center gap-2 transition-colors duration-150
           ${cancelMode ? 'bg-red-500/90' : 'bg-white/10'}`}>
           <div className={`w-11 h-11 rounded-full flex items-center justify-center border-2 transition-colors duration-150
             ${cancelMode ? 'border-white bg-white/30' : 'border-white/50'}`}>
@@ -251,17 +249,6 @@ export default function VoiceInput({ lang, onResult, onError, disabled }: Props)
           </div>
           <span className={`text-sm font-medium transition-colors duration-150
             ${cancelMode ? 'text-white' : 'text-white/60'}`}>取消</span>
-        </div>
-
-        {/* 右：发送区 */}
-        <div className={`flex-1 flex flex-col items-center justify-center gap-2 transition-colors duration-150
-          ${!cancelMode ? 'bg-white/20' : 'bg-white/5'}`}>
-          <div className={`w-11 h-11 rounded-full flex items-center justify-center border-2 transition-colors duration-150
-            ${!cancelMode ? 'border-white bg-white/30' : 'border-white/20'}`}>
-            <span className="text-white text-lg leading-none">↑</span>
-          </div>
-          <span className={`text-sm font-medium transition-colors duration-150
-            ${!cancelMode ? 'text-white' : 'text-white/30'}`}>松开 发送</span>
         </div>
       </div>
     </div>,

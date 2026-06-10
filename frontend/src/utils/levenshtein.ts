@@ -91,13 +91,20 @@ export function scoreRepeatRecording(
     // 例：target="break out"，transcript="break out break out break out"
     // tokenize → ["break","out","break","out","break","out"] → 6 tokens
     // 不能 rounds=6，应该 rounds=3（join 后 /break out/gi 匹配 3 次）
+    //
+    // 修复：对目标短语和转录文本统一去除标点符号后再匹配，
+    // 避免 "struggle to do sth." vs "struggle to do sth" 因句号不匹配导致 rounds=0
+    const stripPunct = (s: string) => s.replace(/[^a-z0-9\s]/gi, '').replace(/\s+/g, ' ').trim()
     const joined = enTokens.join(' ')
-    const targetLower = targetEn.toLowerCase().trim()
-    const escaped = targetLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const matches = targetLower && joined
-      ? joined.match(new RegExp(escaped, 'gi'))
-      : null
-    rounds = matches ? matches.length : 0
+    const joinedClean = stripPunct(joined)
+    const targetClean = stripPunct(targetEn)
+    if (!targetClean || !joinedClean) {
+      rounds = 0
+    } else {
+      const escaped = targetClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const matches = joinedClean.match(new RegExp(escaped, 'gi'))
+      rounds = matches ? matches.length : 0
+    }
     rawScore = enScores.length > 0
       ? Math.round(enScores.reduce((a, b) => a + b, 0) / enScores.length)
       : 0

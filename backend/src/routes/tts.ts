@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { synthesize } from '../services/xunfei/tts'
+import { synthesize } from '../services/tts'
 
 const router = Router()
 

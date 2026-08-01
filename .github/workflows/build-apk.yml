@@ -1,0 +1,81 @@
+name: 构建 Android APK（手表版）
+
+on:
+  # 手动触发（推荐方式）
+  workflow_dispatch:
+  # 推送 v* 版本 tag 时自动构建
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-apk:
+    name: 构建手表版 APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # ── Node.js ──────────────────────────────────────────────
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装前端依赖（仅需 Capacitor CLI）
+        working-directory: frontend
+        run: npm ci
+
+      - name: 创建占位 HTML
+        run: mkdir -p frontend/dist && echo '<!doctype html><html><body></body></html>' > frontend/dist/index.html
+
+      - name: 注入线上地址
+        working-directory: frontend
+        run: |
+          jq '.server.url = "${{ secrets.APP_URL }}"' capacitor.config.json > tmp.json && mv tmp.json capacitor.config.json
+
+      # ── Java ─────────────────────────────────────────────────
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # ── Android SDK ──────────────────────────────────────────
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 platform-tools'
+
+      - name: 配置 Android SDK 路径
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > frontend/android/local.properties
+
+      # ── Capacitor 同步 ───────────────────────────────────────
+      - name: 同步 Web 资源到 Android 项目
+        working-directory: frontend
+        run: npx --no-install cap sync
+
+      # ── 构建 APK ────────────────────────────────────────────
+      - name: 确保 gradlew 可执行
+        run: chmod +x frontend/android/gradlew
+
+      - name: 构建 Debug APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug
+
+      # ── 上传产物 ────────────────────────────────────────────
+      - name: 上传 APK 到构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: word-master-watch-debug
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          compression-level: 9

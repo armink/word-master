@@ -1,0 +1,9 @@
+{
+  "appId": "top.zerage.wordmaster",
+  "appName": "Word Master",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}

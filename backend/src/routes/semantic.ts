@@ -39,11 +39,14 @@ router.post('/check-chinese', async (req, res) => {
 /**
  * POST /api/semantic/check-english
  * 中→英 / 拼写：校验用户输入的英文答案（缩写展开 + 斜杠备选）
- * Body: { standard: string, answer: string }
+ * Body: { standard: string, answer: string, phonetic?: boolean }
+ *   phonetic 默认 true（语音作答容错同音词）；拼写测验传 false 要求精确拼写。
  * Response: { match: boolean }
  */
 router.post('/check-english', (req, res) => {
-  const { standard, answer } = req.body as { standard?: string; answer?: string }
+  const { standard, answer, phonetic } = req.body as {
+    standard?: string; answer?: string; phonetic?: boolean
+  }
 
   if (!standard || typeof standard !== 'string') {
     res.status(400).json({ error: 'standard is required' })
@@ -54,7 +57,9 @@ router.post('/check-english', (req, res) => {
     return
   }
 
-  const match = matchEnglishAnswer(standard.trim(), answer.trim())
+  const match = matchEnglishAnswer(standard.trim(), answer.trim(), {
+    phonetic: phonetic !== false,
+  })
   res.json({ match })
 })
 

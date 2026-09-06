@@ -129,3 +129,59 @@ describe('matchEnglishAnswer - 同音词模糊匹配（STT 误识别容错）', 
     expect(matchEnglishAnswer('give sth. to sb. ...', 'give something to somebody')).toBe(true)
   })
 })
+
+describe('matchEnglishAnswer - 同音词语音匹配（STT 同音误识别）', () => {
+  it('STT 将 high 识别为 hi（同音，字符差异大）应匹配', () => {
+    expect(matchEnglishAnswer('high', 'hi')).toBe(true)
+  })
+
+  it('STT 将 grain 识别为 green（同音）应匹配', () => {
+    expect(matchEnglishAnswer('grain', 'green')).toBe(true)
+  })
+
+  it('STT 将 beef 识别为 biff（同音）应匹配', () => {
+    expect(matchEnglishAnswer('beef', 'biff')).toBe(true)
+  })
+
+  it('多词短语逐词同音误识别应匹配：high grain → hi green', () => {
+    expect(matchEnglishAnswer('high grain', 'hi green')).toBe(true)
+  })
+
+  it('同音但词数不同不应匹配：grain → a green', () => {
+    expect(matchEnglishAnswer('grain', 'a green')).toBe(false)
+  })
+
+  it('2 字母短同音词受长度保护，不误判：on → in', () => {
+    expect(matchEnglishAnswer('on', 'in')).toBe(false)
+  })
+
+  it('拼写测验关闭语音容错：high → hi 在 phonetic:false 下应判错', () => {
+    expect(matchEnglishAnswer('high', 'hi', { phonetic: false })).toBe(false)
+  })
+
+  it('语音容错不影响明显不同的词：cat → hat', () => {
+    expect(matchEnglishAnswer('cat', 'hat')).toBe(false)
+  })
+})
+
+describe('matchEnglishAnswer - 逐字母拼读匹配', () => {
+  it('用户逐字母拼读应匹配：high → h i g h', () => {
+    expect(matchEnglishAnswer('high', 'h i g h')).toBe(true)
+  })
+
+  it('逐字母大写拼读应匹配：grain → G R A I N', () => {
+    expect(matchEnglishAnswer('grain', 'G R A I N')).toBe(true)
+  })
+
+  it('拼写测验同样支持逐字母拼读：beef → b e e f', () => {
+    expect(matchEnglishAnswer('beef', 'b e e f', { phonetic: false })).toBe(true)
+  })
+
+  it('逐字母拼读漏字母不应匹配：high → h i g', () => {
+    expect(matchEnglishAnswer('high', 'h i g')).toBe(false)
+  })
+
+  it('多词短语逐字母拼读应匹配：on foot → o n f o o t', () => {
+    expect(matchEnglishAnswer('on foot', 'o n f o o t')).toBe(true)
+  })
+})

@@ -21,7 +21,8 @@ async function checkAnswer(item: Item, quizType: QuizType, answer: string): Prom
     }
   }
   try {
-    const result = await checkEnglishAnswer(item.english, a)
+    // 拼写测验关闭同音容错（要求拼写精确），中译英语音作答开启
+    const result = await checkEnglishAnswer(item.english, a, quizType !== 'spelling')
     return result.match
   } catch {
     return a.toLowerCase() === item.english.trim().toLowerCase()
@@ -339,15 +340,15 @@ export default function QuizPage() {
               )}
             </div>
 
-            {/* 输入框：答题时可编辑，结果时 disabled 并带颜色提示 */}
+            {/* 输入框：答题时可编辑（中译英/拼写允许手动修正识别结果），结果时 disabled 并带颜色提示 */}
             <input
               ref={inputRef}
               value={userAnswer}
-              onChange={e => isAnswering && currentQuizType === 'spelling' && setUserAnswer(e.target.value)}
+              onChange={e => isAnswering && currentQuizType !== 'en_to_zh' && setUserAnswer(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && isAnswering && userAnswer.trim() && handleSubmit()}
               placeholder={isAnswering ? quizPlaceholder(currentQuizType) : ''}
               disabled={!isAnswering}
-              readOnly={currentQuizType !== 'spelling'}
+              readOnly={currentQuizType === 'en_to_zh'}
               className={`w-full border-2 rounded-2xl px-4 py-3 text-lg outline-none transition-colors
                 ${isAnswering
                   ? 'border-gray-200 focus:border-primary-400 bg-gray-50'
@@ -357,10 +358,27 @@ export default function QuizPage() {
                 }`}
             />
 
-            {/* 操作区：答题时=语音/提示，结果时=继续按钮（自动倒计时，可提前点） */}
+            {/* 操作区：答题时=确认提交/语音/提示，结果时=继续按钮（自动倒计时，可提前点） */}
             <div className="mt-3">
               {isAnswering ? (
                 <>
+                  {/* 确认提交：中译英/拼写且输入框有内容时显示（语音识别不再自动提交） */}
+                  {currentQuizType !== 'en_to_zh' && userAnswer.trim() && (
+                    <div className="mb-2">
+                      <button
+                        onClick={() => handleSubmit()}
+                        disabled={isChecking}
+                        className="w-full py-3.5 rounded-2xl text-base font-bold bg-primary-500 text-white hover:bg-primary-600 active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        ✓ 确认提交
+                      </button>
+                      {currentQuizType === 'zh_to_en' && (
+                        <p className="text-center text-xs text-gray-400 mt-1.5">
+                          识别不对？再按住说一遍，或一个字母一个字母拼出来（如 h i g h），也可点击输入框修改
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {currentQuizType !== 'spelling' && (
                     <VoiceInput
                       lang={currentQuizType === 'en_to_zh' ? 'zh_cn' : 'en_us'}
@@ -379,7 +397,9 @@ export default function QuizPage() {
                         }
                         setUserAnswer(text)
                         setVoiceError('')
-                        handleSubmit(text)
+                        // 中译英：识别结果只填入输入框，由孩子检查后手动「确认提交」，
+                        // 识别不对可再按住说一遍、逐字母拼读，或用键盘修改
+                        if (currentQuizType === 'en_to_zh') handleSubmit(text)
                       }}
                       onError={msg => setVoiceError(msg)}
                       disabled={isChecking}
@@ -408,7 +428,7 @@ export default function QuizPage() {
                   {isChecking && (
                     <p className="text-center text-sm text-gray-400 mt-2 animate-pulse">判断中…</p>
                   )}
-                  {currentQuizType === 'spelling' && !isChecking && (
+                  {currentQuizType === 'spelling' && !isChecking && !userAnswer.trim() && (
                     <p className="text-center text-xs text-gray-300 mt-2">输入后按回车提交</p>
                   )}
                 </>

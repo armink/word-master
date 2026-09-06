@@ -112,11 +112,12 @@ export const checkChineseAnswer = (standard: string, answer: string) =>
     body: JSON.stringify({ standard, answer }),
   })
 
-/** 中→英 / 拼写：校验用户输入的英文答案（缩写展开 + 斜杠备选） */
-export const checkEnglishAnswer = (standard: string, answer: string) =>
+/** 中→英 / 拼写：校验用户输入的英文答案（缩写展开 + 斜杠备选 + 同音容错）
+ *  phonetic=false 关闭同音词语音容错（拼写测验要求拼写精确） */
+export const checkEnglishAnswer = (standard: string, answer: string, phonetic = true) =>
   request<{ match: boolean }>('/semantic/check-english', {
     method: 'POST',
-    body: JSON.stringify({ standard, answer }),
+    body: JSON.stringify({ standard, answer, phonetic }),
   })
 
 // ── 学习计划 ──────────────────────────────────────────────────────

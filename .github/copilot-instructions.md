@@ -26,6 +26,6 @@
 
 ## 开发规范
 
-- 新功能开发遵循 [feature.prompt.md](prompts/feature.prompt.md) 流程
-- Bug 修复遵循 [bugfix.prompt.md](prompts/bugfix.prompt.md) 流程
+- 新功能开发遵循 [feature](skills/feature/SKILL.md) 流程
+- Bug 修复遵循 [bug](skills/bug/SKILL.md) 流程
 - 测试范围：仅后端接口（`backend/src/**/*.test.ts`），不涉及前端

@@ -108,7 +108,22 @@ npm run test:coverage
 - 中途退出再进入的补偿逻辑
 - 首次正确率计算
 
-修复 Bug 时请遵循 [Bug 修复流程](.github/prompts/bugfix.prompt.md)：先写测试复现 Bug，验证测试失败后再修改代码。
+修复 Bug 时请遵循 [Bug 修复流程](../.github/skills/bug/SKILL.md)：先写测试复现 Bug，验证测试失败后再修改代码。
+
+---
+
+## 构建 Android APK
+
+APK 是「远程壳」：WebView 直接加载线上站点，页面更新无需重新打包，只有更换域名时才需要重建。
+
+```powershell
+# 站点地址取值顺序：-AppUrl 参数 → APP_URL 环境变量 → .apk-url 文件
+.\scripts\build-apk.ps1 -JavaHome D:\jdk-21 -AndroidHome E:\Android\SDK
+```
+
+前置条件：JDK 21 + Android SDK（`platforms;android-36`、`build-tools;36.0.0`）。产物输出到 `apk-downloads/`。
+
+debug 签名已强制 v1 + v2 双签，避免国产 ROM 解析 APK 时报 `packageinfo is null`。
 
 ---
 
@@ -129,6 +144,7 @@ word-master/
 │   │   │   ├── students.ts     # 学生管理
 │   │   │   ├── tts.ts          # TTS 代理
 │   │   │   ├── stt.ts          # STT 代理
+│   │   │   ├── records.ts      # 学习记录
 │   │   │   └── semantic.ts     # 语义匹配接口
 │   │   ├── services/
 │   │   │   ├── xunfei/         # 讯飞语音（auth / stt / tts）
@@ -140,20 +156,27 @@ word-master/
 │   ├── scripts/                # 工具脚本（生成例句、探测模型等）
 │   └── vitest.config.ts        # 测试配置（内存数据库隔离）
 ├── frontend/                   # React 单页应用
+│   ├── android/                # Capacitor Android 工程（APK 打包）
 │   └── src/
 │       ├── pages/              # 页面组件
 │       ├── components/         # 通用组件（MasteryBar / TtsButton / VoiceInput）
 │       ├── hooks/              # 数据 hooks
 │       └── api/index.ts        # 所有后端接口封装
 ├── docs/                       # 设计文档（数据库 schema / UX 设计）
+├── scripts/
+│   ├── deploy.ps1              # 构建镜像并部署到 hern-gateway 服务器
+│   └── build-apk.ps1           # 构建 Android APK（WebView 远程壳）
 ├── Dockerfile                  # 三阶段构建
-├── docker-compose.yml          # 生产部署配置
+├── docker-compose.yml          # 通用部署配置（镜像来自 ghcr.io）
+├── docker-compose.server.yml   # hern-gateway 内网部署（web-proxy 网络）
 └── .github/
     ├── workflows/
     │   ├── ci.yml              # PR / push 触发：类型检查 + 测试 + Docker 构建验证
-    │   └── docker-publish.yml  # CI 通过后自动构建推送镜像到 ghcr.io
-    └── prompts/
-        └── bugfix.prompt.md    # Bug 修复工作流
+    │   ├── docker-publish.yml  # CI 通过后自动构建推送镜像到 ghcr.io
+    │   └── build-apk.yml       # 手动/tag 触发：构建 Android APK
+    └── skills/
+        ├── bug/                # Bug 修复工作流
+        └── feature/            # 新功能开发工作流
 ```
 
 ---

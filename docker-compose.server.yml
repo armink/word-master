@@ -1,0 +1,63 @@
+# ============================================================
+# word-master · hern-gateway 服务器部署配置
+#
+# - 通过共享外部网络 web-proxy 接入统一网关（不暴露公网端口）
+# - 镜像由本地构建后 docker load（不使用 registry）
+# - 默认轻量模式：关闭本地语义模型，判题回退拼音/关键词匹配
+#
+# 使用方式（服务器）：
+#   cd /opt/word-master && docker compose up -d
+# ============================================================
+services:
+  app:
+    image: word-master:latest
+    container_name: word-master
+    # 仅容器网络内暴露，由 hern-gateway 按容器名转发
+    expose:
+      - "3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # 固定数据库路径（容器内），数据落在 sqlite-data 卷
+      - DB_PATH=/app/data/word-master.db
+      - APP_BASE_PATH=/
+      # 生产访问源（必须为线上域名）
+      # 由 deploy 脚本写入 .env 的 PROD_CORS_ORIGIN 注入，
+      # 避免本地开发用的 CORS_ORIGIN 泄漏到生产，域名也不进入仓库
+      - CORS_ORIGIN=${PROD_CORS_ORIGIN:?PROD_CORS_ORIGIN 未设置：请在服务器 .env 中填写线上访问源}
+      # 轻量模式开关：需要近义词判题时改为 true，并同步调大内存上限
+      - SEMANTIC_ENABLED=false
+      # 限制 Node 堆，避免容器内存超限被 OOM kill
+      - NODE_OPTIONS=--max-old-space-size=192
+    volumes:
+      - sqlite-data:/app/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "256M"
+    networks:
+      - default
+      - web-proxy
+
+volumes:
+  sqlite-data:
+
+networks:
+  default:
+  # 共享外部网络：供 hern-gateway 反代按容器名访问本服务
+  web-proxy:
+    external: true

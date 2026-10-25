@@ -27,6 +27,8 @@ services:
       - TENCENT_SECRET_KEY=${TENCENT_SECRET_KEY:-}
       # DeepSeek AI 例句生成（可选）
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      # 本地语义判题模型开关（默认启用；内存受限时可设为 false）
+      - SEMANTIC_ENABLED=${SEMANTIC_ENABLED:-true}
       # 子路径部署时设置（需与镜像构建时的 --build-arg VITE_BASE_URL 一致）
       - APP_BASE_PATH=${APP_BASE_PATH:-/}
       # 前后端分开部署时才需要配置（同源部署留空）

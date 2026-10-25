@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
-[![Tests](https://img.shields.io/badge/Tests-91%20passed-brightgreen)](#测试)
+[![Tests](https://img.shields.io/badge/Tests-221%20passed-brightgreen)](#测试)
 
 ---
 
@@ -110,7 +110,7 @@ Web H5，手机浏览器即可访问，无需下载 App。
 | 语音合成 | 讯飞 WebSocket TTS API |
 | 语义判题 | `@xenova/transformers` 本地推理（无需 GPU，无需联网） |
 | AI 例句生成 | DeepSeek API |
-| 测试 | Vitest + Supertest（91 个集成测试） |
+| 测试 | Vitest + Supertest（221 个测试） |
 
 ---
 
@@ -139,6 +139,42 @@ docker compose up -d
 
 启动完成后访问 `http://服务器IP:3000` 即可使用。首次启动会自动下载语义模型（~85MB），稍候片刻即可正常使用。
 
+### 轻量部署（内存受限服务器）
+
+本地语义判题模型（`@xenova/transformers`）加载后会常驻约 750MB 内存。内存较小的服务器可以关闭它：
+
+```bash
+# 构建时剔除语义模型依赖（镜像更小）
+docker build --build-arg INSTALL_SEMANTIC=false -t word-master .
+```
+
+```env
+# .env 中运行时关闭
+SEMANTIC_ENABLED=false
+```
+
+关闭后判题自动回退到「精确 → 拼音 → 关键词」匹配，其余功能不受影响。
+
+### 部署到 hern-gateway 服务器（维护者）
+
+服务器上的业务容器通过共享网络 `web-proxy` 接入统一网关，不暴露公网端口：
+
+```powershell
+# 本地构建 → 打包上传 → 服务器加载并重启（需 Docker Desktop 运行）
+.\scripts\deploy.ps1
+```
+
+服务器地址与线上域名不写入仓库，放在仓库根目录的 `.deploy-env`（已 gitignore）：
+
+```env
+DEPLOY_SERVER=your.server.ip
+DEPLOY_DOMAIN=https://your-domain.com
+```
+
+- 服务器配置使用 [`docker-compose.server.yml`](docker-compose.server.yml)：web-proxy 网络、日志轮转、内存上限、健康检查；容器名 `word-master`，数据落在 `sqlite-data` 卷，目录 `/opt/word-master`
+- 部署脚本会把 `DEPLOY_DOMAIN` 写入服务器 `.env` 的 `PROD_CORS_ORIGIN`，由 compose 注入为 `CORS_ORIGIN`：本地开发用的 `CORS_ORIGIN` 不会带到生产
+- 默认轻量构建（`INSTALL_SEMANTIC=false`，`SEMANTIC_ENABLED=false`）；需要近义词判题时改用 `-InstallSemantic true`，并同步调大 `docker-compose.server.yml` 的内存上限
+
 ### 配置环境变量
 
 编辑 `.env` 文件：
@@ -151,6 +187,10 @@ XUNFEI_API_SECRET=你的APISecret
 
 # DeepSeek（AI 例句生成）— 可选
 DEEPSEEK_API_KEY=你的APIKey
+
+# 本地语义判题模型开关（默认 true）
+# 内存受限的服务器可设为 false，判题回退到拼音/关键词匹配
+SEMANTIC_ENABLED=true
 
 # 子路径部署（可选）— 同一域名下通过不同路径区分多个应用时配置
 # 需与构建镜像时的 --build-arg VITE_BASE_URL 保持一致，默认根路径无需填写
@@ -238,7 +278,7 @@ docker compose logs -f app
 
 1. `npm test` 全部通过
 2. 遵循 [提交规范](COMMIT_CONVENTION.md)（Conventional Commits）
-3. 修复 Bug 时请先添加对应测试用例（参考 `.github/prompts/bugfix.prompt.md`）
+3. 修复 Bug 时请先添加对应测试用例（参考 `.github/skills/bug/SKILL.md`）
 
 ---
 

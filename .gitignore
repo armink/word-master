@@ -32,3 +32,16 @@ Thumbs.db
 # 日志
 *.log
 npm-debug.log*
+
+# 部署临时产物
+word-master-images.zip
+word-master-images.tar
+
+# Local APK build target URL (private domain, never commit)
+.apk-url
+
+# APK build output
+apk-downloads/
+
+# Local deploy target (server + domain, never commit)
+.deploy-env

@@ -1,15 +1,51 @@
-import { pipeline, cos_sim, env } from '@xenova/transformers'
 import { pinyin } from 'pinyin-pro'
-
-// 优先使用国内镜像，避免 huggingface.co 无法访问
-env.remoteHost = 'https://hf-mirror.com'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FeaturePipeline = (input: string, options: Record<string, unknown>) => Promise<any>
 
+/**
+ * 本地语义模型（@xenova/transformers）是可选依赖：
+ * - 默认安装并启用；
+ * - 轻量部署可在构建时 `npm prune --omit=optional` 完全剔除，
+ *   或运行时设置 SEMANTIC_ENABLED=false 关闭；
+ * - 模型不可用时自动回退到拼音/关键词匹配，不影响判题主流程。
+ */
+type TransformersModule = typeof import('@xenova/transformers')
+
+let transformersModule: TransformersModule | null = null
+let transformersLoading: Promise<TransformersModule | null> | null = null
+
 let embedder: FeaturePipeline | null = null
-let modelUnavailable = false   // 模型加载失败后设为 true，回退到关键词模式
-let loadingPromise: Promise<FeaturePipeline> | null = null
+let modelUnavailable = false   // 模型加载失败/被禁用后设为 true，回退到关键词模式
+let loadingPromise: Promise<FeaturePipeline | null> | null = null
+
+/** 是否在运行时禁用本地语义模型（默认启用） */
+function isSemanticDisabled(): boolean {
+  const v = process.env.SEMANTIC_ENABLED
+  return v === 'false' || v === '0' || v === 'off'
+}
+
+/** 动态加载 @xenova/transformers（可选依赖，未安装时返回 null） */
+async function getTransformers(): Promise<TransformersModule | null> {
+  if (isSemanticDisabled()) return null
+  if (transformersModule) return transformersModule
+  if (!transformersLoading) {
+    transformersLoading = import('@xenova/transformers')
+      .then(mod => {
+        // 优先使用国内镜像，避免 huggingface.co 无法访问
+        mod.env.remoteHost = 'https://hf-mirror.com'
+        transformersModule = mod
+        return mod
+      })
+      .catch(err => {
+        modelUnavailable = true
+        transformersLoading = null
+        console.warn('[semantic] @xenova/transformers 不可用，已降级为关键词匹配:', (err as Error).message)
+        return null
+      })
+  }
+  return transformersLoading
+}
 
 /**
  * LLM 语义验证器（可选注入）
@@ -35,12 +71,17 @@ export const LLM_GRAY_ZONE = {
 }
 
 async function getEmbedder(): Promise<FeaturePipeline | null> {
-  if (modelUnavailable) return null
+  if (isSemanticDisabled() || modelUnavailable) return null
   if (embedder) return embedder
   if (!loadingPromise) {
-    loadingPromise = (
-      pipeline('feature-extraction', 'Xenova/paraphrase-multilingual-MiniLM-L12-v2') as Promise<FeaturePipeline>
-    ).then(p => {
+    loadingPromise = (async () => {
+      const lib = await getTransformers()
+      if (!lib) return null
+      return lib.pipeline(
+        'feature-extraction',
+        'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+      ) as Promise<FeaturePipeline>
+    })().then(p => {
       embedder = p
       return p
     }).catch(err => {
@@ -54,6 +95,10 @@ async function getEmbedder(): Promise<FeaturePipeline | null> {
 
 /** 服务启动时后台预热，避免首次请求时卡顿 */
 export function warmupSemantic(): void {
+  if (isSemanticDisabled()) {
+    console.log('[semantic] SEMANTIC_ENABLED=false，已跳过本地语义模型（回退拼音/关键词匹配）')
+    return
+  }
   getEmbedder()
     .then(p => p && console.log('[semantic] 模型加载完毕，语义匹配已启用'))
     .catch(err => console.warn('[semantic] 模型加载失败，已降级为关键词匹配:', (err as Error).message))
@@ -66,8 +111,9 @@ export function isSemanticModelReady(): boolean {
 
 /** 计算两段文本的余弦相似度，范围 [-1, 1] */
 async function cosineSimilarity(text1: string, text2: string): Promise<number> {
+  const lib = await getTransformers()
   const embed = await getEmbedder()
-  if (!embed) throw new Error('model unavailable')
+  if (!lib || !embed) throw new Error('model unavailable')
   const [out1, out2] = await Promise.all([
     embed(text1, { pooling: 'mean', normalize: true }),
     embed(text2, { pooling: 'mean', normalize: true }),
@@ -75,7 +121,7 @@ async function cosineSimilarity(text1: string, text2: string): Promise<number> {
   // cos_sim 类型声明要求 number[]，但运行时兼容 TypedArray
   const arr1 = out1.data as unknown as number[]
   const arr2 = out2.data as unknown as number[]
-  return cos_sim(arr1, arr2)
+  return lib.cos_sim(arr1, arr2)
 }
 
 function normalizeText(s: string): string {
@@ -91,7 +137,7 @@ function toPinyinNoTone(s: string): string {
  * 三阶段混合语义匹配：
  * 1. 精确匹配（去标点/空格） → 即时
  * 2. 关键词包含（标准答案词片段出现在用户答案中）→ 即时
- * 3. MiniLM 向量语义相似度（需模型已加载）→ 30-100ms
+ * 3. 向量语义相似度（需模型已加载且未被 SEMANTIC_ENABLED 关闭）→ 30-100ms
  *
  * 若模型未加载，仅执行 Stage 1-2，结果依然可用。
  */
@@ -164,8 +210,8 @@ export async function checkSemanticMatch(
     return { match: true, score: 0.85, method: 'keyword' }
   }
 
-  // Stage 3: 语义向量相似度（模型不可用时跳过，直接返回不匹配）
-  if (modelUnavailable || !embedder) {
+  // Stage 3: 语义向量相似度（模型被禁用/不可用时跳过，直接返回不匹配）
+  if (isSemanticDisabled() || modelUnavailable || !embedder) {
     return { match: false, score: 0, method: 'keyword' }
   }
   const score = await cosineSimilarity(standard, userAnswer)

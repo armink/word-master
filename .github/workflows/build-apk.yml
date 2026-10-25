@@ -3,6 +3,10 @@ name: 构建 Android APK（手表版）
 on:
   # 手动触发（推荐方式）
   workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'APK 内加载的站点地址（留空则使用 secrets.APP_URL）'
+        required: false
   # 推送 v* 版本 tag 时自动构建
   push:
     tags:
@@ -37,8 +41,15 @@ jobs:
 
       - name: 注入线上地址
         working-directory: frontend
+        env:
+          APP_URL: ${{ inputs.app_url || secrets.APP_URL }}
         run: |
-          jq '.server.url = "${{ secrets.APP_URL }}"' capacitor.config.json > tmp.json && mv tmp.json capacitor.config.json
+          if [ -z "$APP_URL" ]; then
+            echo "未提供 APP_URL：请配置仓库 secret APP_URL，或手动触发时填写 app_url 输入"
+            exit 1
+          fi
+          echo "APK 加载地址已注入"
+          jq --arg url "$APP_URL" '.server.url = $url' capacitor.config.json > tmp.json && mv tmp.json capacitor.config.json
 
       # ── Java ─────────────────────────────────────────────────
       - name: 安装 JDK 21

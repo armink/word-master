@@ -22,6 +22,13 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    signingConfigs {
+        debug {
+            // 部分国产 ROM（小米/MIUI 等）解析只带 v2 签名的 APK 会失败（packageinfo is null），这里强制 v1 + v2 双签
+            enableV1Signing true
+            enableV2Signing true
+        }
+    }
 }
 
 repositories {
